@@ -61,7 +61,7 @@ else
     $BIN_ANTS/ANTS 3 -m PR[$TEMP_T1_FULL,$WORK/mprage.nii.gz,1,4] \
       -x $ROOT/data/template/template_bet_mask.nii.gz \
       -o $WANT/ants_t1_to_temp.nii \
-      -i 200x120x40 -v -t SyN[0.1] | tee $WANT/ants_output.txt
+      -i 200x120x40 -v -t SyN[0.5] | tee $WANT/ants_output.txt
   
 fi
 

@@ -55,13 +55,19 @@ BIN_ANTS=$BIN/ants
 BIN_FSL=$BIN/fsl
 if [[ ! $($BIN/c3d -version | grep 'Version') ]]; then
   echo "Can not execute command \'$BIN/c3d -version\'. Wrong architecture?"
-  exit -1;
+  exit -1
+fi
+
+# Check that the data directory exists
+if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
+  echo "Data files appear to be missing. Can't locate $ASHS_ROOT/data/train/train21/tse_native.nii.gz"
+  exit -1
 fi
 
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
-  exit 2;
+  exit 2
 fi
 
 # Read the options
@@ -95,6 +101,13 @@ elif [[ ! $TSE || ! -f $TSE ]]; then
 elif [[ ! $WORK ]]; then
 	echo "Working/output directory must be specified"
 	exit 2;
+fi
+
+# Check that the dimensions of the T2 image are right
+DIMS=$(c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
+if [[ ${DIMS[2]} > ${DIMS[0]} || ${DIMS[2]} > ${DIMS[1]} ]]; then
+  echo "The T2-weighted image has wrong dimensions (fails dim[2] < min(dim[0], dim[1])"
+  exit -1
 fi
 
 # Subject ID set to work dir last work
