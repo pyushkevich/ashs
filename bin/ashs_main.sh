@@ -104,7 +104,7 @@ elif [[ ! $WORK ]]; then
 fi
 
 # Check that the dimensions of the T2 image are right
-DIMS=$(c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
+DIMS=$($BIN/c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
 if [[ ${DIMS[2]} > ${DIMS[0]} || ${DIMS[2]} > ${DIMS[1]} ]]; then
   echo "The T2-weighted image has wrong dimensions (fails dim[2] < min(dim[0], dim[1])"
   exit -1
