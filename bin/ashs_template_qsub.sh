@@ -51,6 +51,27 @@ else
 
 fi
 
+# Use FLIRT to register T1 to template
+if [[ -f $WFSL/flirt_t1_to_template_ITK.txt && $SKIP_RIGID ]]; then
+
+  echo "Skipping Affine Registration"
+
+else
+
+  # Use FLIRT to match T2 to T1
+  export FSLOUTPUTTYPE=NIFTI_GZ
+
+  # Run flirt with template as reference
+  $BIN_FSL/flirt -v -anglerep quaternion -ref $TEMP_T1_FULL -in $WORK/mprage.nii.gz \
+    -o $WFSL/test_flirt_affine.nii.gz \
+    -omat $WFSL/flirt_intermediate_affine.mat -cost corratio -searchcost corratio
+
+  # Convert the transform to ITK
+  $BIN/c3d_affine_tool $WFSL/flirt_intermediate_affine.mat -ref $TEMP_T1_FULL -src $WORK/mprage.nii.gz \
+    -fsl2ras -oitk $WFSL/flirt_t1_to_template_ITK.txt
+
+fi
+
 # Use ANTS to warp the MPRAGE image to the template
 if [[ -f $WANT/ants_t1_to_tempAffine.txt && $SKIP_ANTS ]]; then
 
@@ -61,6 +82,7 @@ else
     $BIN_ANTS/ANTS 3 -m PR[$TEMP_T1_FULL,$WORK/mprage.nii.gz,1,4] \
       -x $ROOT/data/template/template_bet_mask.nii.gz \
       -o $WANT/ants_t1_to_temp.nii \
+      -a $WFSL/flirt_t1_to_template_ITK.txt \
       -i 200x120x40 -v -t SyN[0.5] | tee $WANT/ants_output.txt
   
 fi
