@@ -60,8 +60,8 @@ if [[ ! $($BIN/c3d -version | grep 'Version') ]]; then
 fi
 
 # Version information
-ASHS_VERSION_SVN="$Revision$"
-ASHS_DATE_SVN="$LastChangedDate$"
+ASHS_VERSION_SVN='$Revision$'
+ASHS_DATE_SVN='$LastChangedDate$'
 
 # Check that the data directory exists
 if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
