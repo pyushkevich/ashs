@@ -14,16 +14,17 @@ function usage()
 		  -g image          Filename of 3D (g)radient echo MRI (MPRAGE, T1w)
 		  -f image          Filename of 2D focal (f)ast spin echo MRI (TSE, T2w)
 		  -w path           Working/output directory
+		  -r image          Manual slice labeling of the right hippocampus (see below)
+		  -l image          Manual slice labeling of the left hippocampus (see below)
 		optional:
 		  -d                Enable debugging
 		  -h                Print help
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
 	                            exists, don't run ANTS/FLIRT again
-		  -r image          Manual slice labeling of the right hippocampus (see below)
-		  -l image          Manual slice labeling of the left hippocampus (see below)
       -I string         Subject ID (for stats output). Defaults to last word of working dir.
       -q string         List of additional options to pass to qsub (Sun Grid Engine)
+      -V                Display version information and exit
 		stages:
 		  0:                initialize work directory
 		  1:                fit to population template
@@ -58,6 +59,10 @@ if [[ ! $($BIN/c3d -version | grep 'Version') ]]; then
   exit -1
 fi
 
+# Version information
+ASHS_VERSION_SVN="$Revision$"
+ASHS_DATE_SVN="$LastChangedDate$"
+
 # Check that the data directory exists
 if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
   echo "Data files appear to be missing. Can't locate $ASHS_ROOT/data/train/train21/tse_native.nii.gz"
@@ -71,7 +76,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 # Read the options
-while getopts "g:f:w:s:r:l:q:Ndh" opt; do
+while getopts "g:f:w:s:r:l:q:I:NdhV" opt; do
   case $opt in
 
     g) MPRAGE=$OPTARG;;
@@ -85,6 +90,7 @@ while getopts "g:f:w:s:r:l:q:Ndh" opt; do
     q) QOPTS=$OPTARG;;
     d) set -x -e;;
     h) usage; exit 0;;
+    V) vers; exit 0;;
     \?) echo "Unknown option $OPTARG"; exit 2;;
     :) echo "Option $OPTARG requires an argument"; exit 2;;
 

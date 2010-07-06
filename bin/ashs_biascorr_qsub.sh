@@ -38,3 +38,8 @@ $BIN/bc $WORK/tse.nii.gz $WSUB/consensus_heuristic_wgtavg_${side}_native.nii.gz 
 
 # Now apply subfield remapping (maintain heuristics)
 $BIN/subfield_leveler $SL $WSUB/bcfh_wgtavg_${side}_native.nii.gz $WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz
+
+# Copy files into the 'final' directory
+c3d $WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz -type ushort \
+  -o $WORK/final/${SUBJID}_${side}_subfields_final.nii.gz
+
