@@ -43,6 +43,12 @@ function usage()
 	USAGETEXT
 }
 
+function vers() 
+{
+  ASHS_VERSION_SVN=$(cat $ASHS_ROOT/bin/ashs_version.txt)
+  echo $ASHS_VERSION_SVN
+}
+
 # The ROOT variable must be set
 if [[ ! $ASHS_ROOT ]]; then
   echo "ASHS_ROOT is not set. Please set this variable to point to the root ASHS directory"
@@ -58,10 +64,6 @@ if [[ ! $($BIN/c3d -version | grep 'Version') ]]; then
   echo "Can not execute command \'$BIN/c3d -version\'. Wrong architecture?"
   exit -1
 fi
-
-# Version information
-ASHS_VERSION_SVN='$Revision$'
-ASHS_DATE_SVN='$LastChangedDate$'
 
 # Check that the data directory exists
 if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
