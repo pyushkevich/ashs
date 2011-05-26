@@ -28,12 +28,17 @@ WSUB=$WORK/subfields
 
 # Quit if slice labeling does not exist
 if [[ ! -f $SL ]]; then
-	echo "Slice labeling not available. Exiting"
-	exit 0;
-fi
 
-# Apply heuristics to the extents of slices
-$BIN/subfield_mask_slices $SL $WSUB/heuristic_mask_${side}.nii.gz
+  # Apply heuristics to the extents of slices
+  $BIN/subfield_mask_slices $WSUB/consensus_wgtavg_${side}_native.nii.gz \
+    $WSUB/heuristic_mask_${side}.nii.gz
+
+else
+
+  # Apply heuristics to the extents of slices
+  $BIN/subfield_mask_slices $SL $WSUB/heuristic_mask_${side}.nii.gz
+
+fi
 
 # Subfield relabeling
 for kind in avg wgtavg; do

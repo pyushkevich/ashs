@@ -73,7 +73,14 @@ else
 fi
 
 # Use ANTS to warp the MPRAGE image to the template
-if [[ -f $WANT/ants_t1_to_tempAffine.txt && $SKIP_ANTS ]]; then
+if [[ $SKIP_ANTS \
+  && -f $WANT/ants_t1_to_tempAffine.txt \
+  && -f $WANT/ants_t1_to_tempWarpxvec.nii \
+  && -f $WANT/ants_t1_to_tempWarpyvec.nii \
+  && -f $WANT/ants_t1_to_tempWarpzvec.nii \
+  && -f $WANT/ants_t1_to_tempInverseWarpxvec.nii \
+  && -f $WANT/ants_t1_to_tempInverseWarpyvec.nii \
+  && -f $WANT/ants_t1_to_tempInverseWarpzvec.nii ]]; then
 
     echo "SKIPPING ANTS"
   

@@ -31,7 +31,14 @@ WREG=$WORK/tseg_${side}_train${tid}
 mkdir -p $WREG
 
 # Run ANTS with current image as fixed, training image as moving
-if [[ -f $WREG/antsregWarpxvec.nii.gz && $SKIP_ANTS ]]; then
+if [[ $SKIP_ANTS \
+  && -f $WREG/antsregAffine.txt \
+  && -f $WREG/antsregWarpxvec.nii.gz \
+  && -f $WREG/antsregWarpyvec.nii.gz \
+  && -f $WREG/antsregWarpzvec.nii.gz \
+  && -f $WREG/antsregInverseWarpxvec.nii.gz \
+  && -f $WREG/antsregInverseWarpyvec.nii.gz \
+  && -f $WREG/antsregInverseWarpzvec.nii.gz ]]; then
 
 	# If registration exists, skip this step
 	echo "Skipping ANTS registration $side/$tid"

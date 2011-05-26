@@ -51,3 +51,20 @@ for side in left right; do
 
 	fi
 done
+
+# Last thing: compute ICV (for now using BET mask)
+$BIN/ants/WarpImageMultiTransform 3 $ROOT/data/template/template_bet_mask.nii.gz \
+  $TMPDIR/icv.nii.gz -R $WORK/mprage.nii.gz \
+  -i $WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+  $WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
+
+# Get T1 voxel volume
+DVOX=($($BIN/c3d $TMPDIR/icv.nii.gz -info | cut -f 3 -d ';' | sed -e "s/.*\[//" -e "s/\].*//" -e 's/, / /g'))
+VVOX=$(echo "${DVOX[0]} * ${DVOX[1]} * ${DVOX[2]}" | bc -l);
+
+# Get ICV
+VOLUME=$($BIN/c3d $TMPDIR/icv.nii.gz -thresh 0.5 inf 1 0 -dup -lstat | tail -n 1 | awk '{print $6}')
+ICV=$(echo "$VVOX * $VOLUME" | /usr/bin/bc -l)
+
+# Write the volume information to output file
+echo $SUBJID $ICV > $WSTAT/${SUBJID}_icv.txt
