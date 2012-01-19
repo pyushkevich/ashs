@@ -10,6 +10,31 @@
 template <class TInputImage, class TOutputImage>
 void
 WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
+::UpdateInputs()
+{
+  // Set all the inputs
+  this->SetNumberOfInputs(1 + 2 * m_Atlases.size() + m_Exclusions.size());
+
+  size_t kInput = 0;
+  this->SetNthInput(kInput++, m_Target);
+  for(size_t i = 0; i < m_Atlases.size(); i++)
+    {
+    this->SetNthInput(kInput++, m_Atlases[i]);
+    this->SetNthInput(kInput++, m_AtlasSegs[i]);
+    }
+
+  for(typename ExclusionMap::iterator it = m_Exclusions.begin(); it != m_Exclusions.end(); ++it)
+    {
+    this->SetNthInput(kInput++, it->second);
+    }
+}
+
+
+
+
+template <class TInputImage, class TOutputImage>
+void
+WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
 ::GenerateInputRequestedRegion()
 {
   Superclass::GenerateInputRequestedRegion();
@@ -20,7 +45,6 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
   // Pad this region by the search window and patch size
   outRegion.PadByRadius(m_SearchRadius);
   outRegion.PadByRadius(m_PatchRadius);
-
 
   // Iterate over all the inputs to this filter
   for(size_t i = 0; i < this->GetNumberOfInputs(); i++)
@@ -83,13 +107,13 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
   this->GetOutput()->Allocate();
 
   // Get the target image
-  InputImageType *target = const_cast<InputImageType *>(this->GetInput(0));
+  InputImageType *target = m_Target;
 
   // Create a neighborhood iterator for the target image
   NIter itTarget(m_PatchRadius, target, this->GetOutput()->GetRequestedRegion());
 
   // Get the number of atlases
-  int n = (this->GetNumberOfInputs() - 1) / 2;
+  int n = m_Atlases.size();
 
   // Construct offset tables for all the images (these can be different because they
   // depend on the buffered region)
@@ -111,7 +135,7 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
   for(int i = 0; i < n; i++)
     {
     // Find all the labels
-    const InputImageType *seg = this->GetInput(2 + 2 * i);
+    const InputImageType *seg = m_AtlasSegs[i];
     itk::ImageRegionConstIteratorWithIndex<InputImageType> it(seg, seg->GetRequestedRegion());
     for(; !it.IsAtEnd(); ++it)
       {
@@ -120,9 +144,9 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
       }
 
     // Compute the offset table for that atlas
-    ComputeOffsetTable(this->GetInput(1+2*i), m_PatchRadius, offPatchAtlas+i, nPatch);
-    ComputeOffsetTable(this->GetInput(2+2*i), m_PatchRadius, offPatchSeg+i, nPatch);
-    ComputeOffsetTable(this->GetInput(1+2*i), m_SearchRadius, offSearchAtlas+i, nSearch, &manhattan);
+    ComputeOffsetTable(m_Atlases[i], m_PatchRadius, offPatchAtlas+i, nPatch);
+    ComputeOffsetTable(m_AtlasSegs[i], m_PatchRadius, offPatchSeg+i, nPatch);
+    ComputeOffsetTable(m_Atlases[i], m_SearchRadius, offSearchAtlas+i, nSearch, &manhattan);
     }
 
   // Allocate posterior images for the different labels
@@ -173,8 +197,8 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     // In each atlas, search for a patch that matches our patch
     for(int i = 0; i < n; i++)
       {
-      const InputImageType *atlas = this->GetInput(1 + 2 * i);
-      const InputImageType *seg = this->GetInput(2 + 2 * i);
+      const InputImageType *atlas = m_Atlases[i];
+      const InputImageType *seg = m_AtlasSegs[i];
       int *offPatch = offPatchAtlas[i], *offSearch = offSearchAtlas[i];
 
       // Get the requested region for the atlas
@@ -428,7 +452,13 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
       sit != labelset.end(); ++sit)
       {
       double posterior = posteriorMap[*sit]->GetPixel(it.GetIndex());
-      if (wmax < posterior)
+
+      // check if the label is excluded
+      typename ExclusionMap::iterator xit = m_Exclusions.find(*sit);
+      bool excluded = (xit != m_Exclusions.end() && xit->second->GetPixel(it.GetIndex()) != 0);
+
+      // Vote!
+      if (wmax < posterior && !excluded)
         {
         wmax = posterior;
         winner = *sit;

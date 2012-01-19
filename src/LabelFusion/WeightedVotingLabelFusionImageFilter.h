@@ -41,18 +41,20 @@ public:
                                                                                
   /** Set target image */
   void SetTargetImage(InputImageType *image)
-    { this->SetInput(0, image); }
+    { m_Target = image; UpdateInputs(); }
 
-  /** Set atlas images */
-  void SetNumberOfAtlases(int nAtlases)
+  /** Add an atlas */
+  void AddAtlas(InputImageType *grey, InputImageType *seg)
     {
-    this->SetNumberOfInputs(nAtlases * 2 + 1);
+    m_Atlases.push_back(grey);
+    m_AtlasSegs.push_back(seg);
+    UpdateInputs();
     }
 
-  void SetAtlas(int i, InputImageType *grey, InputImageType *seg)
+  void AddExclusionMap(InputImagePixelType label, InputImageType *excl)
     {
-    SetInput(1 + 2 * i, grey);
-    SetInput(2 + 2 * i, seg);
+    m_Exclusions[label] = excl;
+    UpdateInputs();
     }
 
   /** Set the parameters */
@@ -76,7 +78,11 @@ public:
  
 protected:
 
-  WeightedVotingLabelFusionImageFilter() { m_Alpha=0.01; m_Beta=2; }
+  WeightedVotingLabelFusionImageFilter() 
+    { 
+    m_Alpha=0.01; 
+    m_Beta=2; 
+    }
   ~WeightedVotingLabelFusionImageFilter() {}
 
 private:
@@ -92,6 +98,8 @@ private:
     const InputImageType *image, const SizeType &radius, 
     int **offset, size_t &nPatch, int **manhattan = NULL);
 
+  void UpdateInputs();
+
   void PatchStats(const InputImagePixelType *p, size_t n, int *offsets, InputImagePixelType &mean, InputImagePixelType &sd);
 
   double JointErrorEstimate(const InputImagePixelType *t, const InputImagePixelType *a1, const InputImagePixelType *a2, size_t n, int *offsets);
@@ -99,6 +107,14 @@ private:
   SizeType m_SearchRadius, m_PatchRadius;
 
   double m_Alpha, m_Beta;
+
+  typedef std::vector<InputImagePointer> InputImageList;
+  typedef std::map<InputImagePixelType, InputImagePointer> ExclusionMap;
+
+  // Organized lists of inputs
+  InputImagePointer m_Target;
+  InputImageList m_AtlasSegs, m_Atlases;
+  ExclusionMap m_Exclusions;
 
 };
 

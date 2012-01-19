@@ -260,14 +260,6 @@ int lfapp(int argc, char *argv[])
     return -1;
     }
 
-  // Check if the exclusion pattern makes sense
-  char test[4096];
-  if(sprintf(test, fnExclusionPattern.c_str(), 1) < 0)
-    {
-    cerr << "The exclusion pattern %s does not have proper C printf format\n";
-    return -1;
-    }
-
   // Print parametes
   cout << "LABEL FUSION PARAMETERS:" << endl;
   p.Print(cout);
@@ -276,7 +268,6 @@ int lfapp(int argc, char *argv[])
   typedef itk::Image<float, VDim> ImageType;
   typedef WeightedVotingLabelFusionImageFilter<ImageType, ImageType> VoterType;
   typename VoterType::Pointer voter = VoterType::New();
-  voter->SetNumberOfAtlases(p.fnAtlas.size());
 
   // Set inputs
   typedef itk::ImageFileReader<ImageType> ReaderType;
@@ -302,7 +293,7 @@ int lfapp(int argc, char *argv[])
     rl = ReaderType::New();
     rl->SetFileName(p.fnLabel[i].c_str());
     rLabel.push_back(rl);
-    voter->SetAtlas(i, ra->GetOutput(), rl->GetOutput());
+    voter->AddAtlas(ra->GetOutput(), rl->GetOutput());
 
     // Update the mask region
     rl->Update();
@@ -341,6 +332,17 @@ int lfapp(int argc, char *argv[])
   rr.SetIndex(1,210); rr.SetSize(1,10);
   rr.SetIndex(2,4); rr.SetSize(2,10);
   */
+
+  // Set the exclusions in the atlas
+  for(typename map<int,string>::iterator xit = p.fnExclusion.begin(); xit != p.fnExclusion.end(); ++xit)
+    {
+    typename ReaderType::Pointer rx;
+    rx = ReaderType::New();
+    rx->SetFileName(xit->second.c_str());
+    rx->Update();
+    voter->AddExclusionMap(xit->first, rx->GetOutput());
+    }
+
   voter->GetOutput()->SetRequestedRegion(rMask);
   voter->Update();
 
