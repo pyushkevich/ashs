@@ -1,0 +1,466 @@
+#!/bin/bash - 
+
+# ----------------------------------------------------
+# A library of routines shared by all the ASHS scripts
+# ----------------------------------------------------
+
+# If a custom config file specified, first read the default config file
+if [[ ! ${ASHS_CONFIG?} == ${ASHS_ROOT?}/bin/ashs_config.sh ]]; then
+  source ${ASHS_ROOT?}/bin/ashs_config.sh
+fi
+
+# Read the config file
+source ${ASHS_CONFIG?}
+
+# Wait for qsub to finish
+function qwait() 
+{
+  qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
+}
+
+# Report the version number
+function vers() 
+{
+  ASHS_VERSION_SVN=$(cat $ASHS_ROOT/bin/ashs_version.txt)
+  echo $ASHS_VERSION_SVN
+}
+
+# This function aligns the T1 and T2 images together. It takes two parameters: the 
+# path to a directory containing images mprage.nii.gz and tse.nii.gz, and a path to 
+# the directory where the output of the registration is stored.
+function ashs_align_t1t2()
+{
+  WORK=${1?}
+  WFSL=${2?}
+
+  if [[ -f $WFSL/flirt_t2_to_t1_ITK.txt && $SKIP_RIGID ]]; then
+    
+    echo "Skipping Rigid Registration"
+
+  else
+
+    # Use FLIRT to match T2 to T1
+    export FSLOUTPUTTYPE=NIFTI_GZ
+
+    # Make the TSE image isotropic and extract a chunk
+    c3d $WORK/tse.nii.gz -resample ${ASHS_TSE_ISO_FACTOR?} -region ${ASHS_TSE_ISO_REGION_CROP?} -o $WFSL/tse_iso.nii.gz
+
+    # Reslice T1 into space of T2 chunk
+    c3d $WFSL/tse_iso.nii.gz $WORK/mprage.nii.gz -reslice-identity -o $WFSL/mprage_to_tse_iso.nii.gz
+
+    # Run flirt with T2 as reference (does it matter at this point?)
+    flirt -v -ref $WFSL/tse_iso.nii.gz -in $WFSL/mprage_to_tse_iso.nii.gz -o $WFSL/test_flirt.nii.gz \
+      -omat $WFSL/flirt_intermediate.mat -cost normmi -dof 6 ${ASHS_FLIRT_MULTIMODAL_OPTS?}
+
+    # Convert the T1-T2 transform to ITK
+    c3d_affine_tool $WFSL/flirt_intermediate.mat -ref $WFSL/tse_iso.nii.gz -src $WFSL/mprage_to_tse_iso.nii.gz \
+      -fsl2ras -inv -oitk $WFSL/flirt_t2_to_t1_ITK.txt
+
+  fi
+}
+
+# This function maps histogram-corrected whole-brain images into the 
+# reference space of the template. Parameters are the atlas directory
+# containing the input images, and the atlas directory
+function ashs_reslice_to_template()
+{
+  WORK=${1?}
+  ATLAS=${2?}
+  WANT=$WORK/ants_t1_to_temp
+  WFSL=$WORK/flirt_t2_to_t1
+
+  # Apply the transformation to the masks
+  for side in left right; do
+
+    # Define the reference space
+    REFSPACE=$ATLAS/template/refspace_${side}.nii.gz
+
+    # Map the image to the target space
+    WarpImageMultiTransform 3 $WORK/tse_histmatch.nii.gz \
+      $WORK/tse_to_chunktemp_${side}.nii.gz -R $REFSPACE \
+      $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
+
+    # Map the image to the target space
+    WarpImageMultiTransform 3 $WORK/mprage_histmatch.nii.gz \
+      $WORK/mprage_to_chunktemp_${side}.nii.gz -R $REFSPACE \
+      $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt 
+
+    # Create a custom mask for the TSE image
+    c3d $WORK/tse_to_chunktemp_${side}.nii.gz -verbose -pim r -thresh 0.001% inf 1 0 \
+      -erode 0 4x4x4 $REFSPACE -times -type uchar -o $WORK/tse_to_chunktemp_${side}_regmask.nii.gz
+
+    # Create a combined warp from chunk template to T2 native space - and back
+    ComposeMultiTransform 3 $WANT/ants_t2_to_temp_fullWarp.nii.gz -R $REFSPACE \
+      $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
+
+    ComposeMultiTransform 3 $WANT/ants_t2_to_temp_fullInverseWarp.nii.gz \
+      -R $WORK/tse.nii.gz -i $WFSL/flirt_t2_to_t1_ITK.txt \
+      -i $WANT/ants_t1_to_tempAffine.txt $WANT/ants_t1_to_tempInverseWarp.nii.gz
+
+    # Create a native-space chunk of the TSE image 
+    WarpImageMultiTransform 3 $WORK/tse_to_chunktemp_${side}_regmask.nii.gz \
+      $TMPDIR/natmask.nii.gz -R $WORK/tse.nii.gz $WANT/ants_t2_to_temp_fullInverseWarp.nii.gz
+
+    # Notice that we pad a little in the z-direction. This is to make sure that we get all the 
+    # slices in the image, otherwise there will be problems with the voting code.
+    # We also resample the segmentation
+    c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox $WORK/tse.nii.gz \
+      -reslice-identity -o $WORK/tse_native_chunk_${side}.nii.gz \
+      $WORK/seg_${side}.nii.gz -int 0 -reslice-identity -o $WORK/tse_native_chunk_${side}_seg.nii.gz
+
+  done
+}
+
+# This function call the label fusion command given the set of training images, the id of the 
+# subject to segment, the side, and the output filename
+function ashs_label_fusion()
+{
+  id=${1?}
+  FNOUT=${2?}
+
+cat <<-BLOCK1
+	Script: ashs_atlas_pairwise.sh
+	Root: ${ROOT?}
+	Working directory: ${WORK?}
+	PATH: ${PATH?}
+	Subject: ${id?}
+	Train Set: ${TRAIN?}
+	  Output: ${FNOUT?}
+	Side: ${side?}
+BLOCK1
+
+  # Go to the atlas directory
+  cd $WORK/atlas/$id
+
+  # Perform label fusion using the atlases
+  ATLASES=$(echo $TRAIN | sed -e "s|\w*|tseg_${side}_train&/atlas_to_native.nii.gz|g")
+  ATLSEGS=$(echo $TRAIN | sed -e "s|\w*|tseg_${side}_train&/atlas_to_native_segvote.nii.gz|g")
+
+  # If there are heuristics, make sure they are supplied to the LF program
+  if [[ $ASHS_HEURISTICS ]]; then
+    EXCLCMD=$(for fn in $(ls heurex/heurex_${side}_*.nii.gz); do \
+      echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
+      done)
+  fi
+
+  # Run the label fusion program
+  label_fusion 3 -g $ATLASES -l $ATLSEGS \
+    -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+    $EXCLCMD \
+    tse_native_chunk_${side}.nii.gz $FNOUT
+}
+
+# *************************************************************
+#  ENTRY-LEVEL ATLAS-BUILDING FUNCTIONS (Called by ashs_train)
+# *************************************************************
+
+# Initialize the atlas directory for each atlas
+function ashs_atlas_initialize_directory()
+{
+  # Initialize Directory
+  for ((i=0;i<$N;i++)); do
+    id=${ATLAS_ID[i]}
+    qsub $QOPTS -j y -o $WORK/dump -cwd -V -N "ashs_atlas_initdir_${id}" \
+      $ROOT/bin/ashs_atlas_initdir_qsub.sh \
+        $id ${ATLAS_T1[i]} ${ATLAS_T2[i]} ${ATLAS_LS[i]} ${ATLAS_RS[i]}
+  done
+
+  # Wait for jobs to complete
+  qwait "ashs_atlas_initdir_*"
+}
+
+# Build the template using SYN
+function ashs_atlas_build_template()
+{
+  # All work is done in the template directory
+  mkdir -p $WORK/template_build
+  pushd $WORK/template_build
+
+  # Populate
+  for id in ${ATLAS_ID[*]}; do
+    ln -sf $WORK/atlas/${id}/mprage.nii.gz ./${id}_mprage.nii.gz
+  done
+
+  # Run the template code
+  if [[ -f atlastemplate.nii.gz && $SKIP_ANTS ]]; then
+    echo "Skipping template building"
+  else
+    export ANTSPATH=$ASHS_ANTS/
+    buildtemplateparallel.sh -d 3 -o atlas -m ${ASHS_TEMPLATE_ANTS_ITER?} -r 1 -t GR -s CC \
+      $(echo ${ATLAS_ID[*]} | sed -e "s|\w*|&_mprage.nii.gz|g")
+  fi
+
+  # Copy the template into the final folder
+  mkdir -p $WORK/final/template/
+  cp -av atlastemplate.nii.gz  $WORK/final/template/template.nii.gz
+
+  # We should now map everyone's segmentation into the template to build a mask
+  for side in left right; do
+
+    # Create a working directory
+    mkdir -p mask_${side}
+    pushd mask_${side}
+
+    # Warp each segmentation
+    for id in ${ATLAS_ID[*]}; do
+
+      WarpImageMultiTransform 3 $WORK/atlas/${id}/seg_${side}.nii.gz \
+        ${id}_seg_${side}.nii.gz -R ../atlastemplate.nii.gz \
+        ../atlas${id}_mprageWarp.nii.gz ../atlas${id}_mprageAffine.txt \
+        $WORK/atlas/${id}/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt --use-NN
+
+    done
+
+    # Average the segmentations and create a target ROI with desired resolution
+    c3d $(echo ${ATLAS_ID[*]} | sed -e "s|\w*|&_seg_${side}.nii.gz|g") \
+      -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh 0.5 inf 1 0 \
+      -o meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
+      -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
+      -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \
+      -o refspace_${side}.nii.gz \
+      ../atlastemplate.nii.gz -reslice-identity -o refspace_mprage_${side}.nii.gz \
+      -push M -reslice-identity -thresh 0.5 inf 1 0 -o refspace_meanseg_${side}.nii.gz
+
+    cp -a refspace*${side}.nii.gz $WORK/final/template/
+
+    popd
+
+  done
+
+  # Use the first image in the atlas set as the reference for histogram matching
+  mkdir -p $WORK/final/ref_hm
+  HMID=${ATLAS_ID[${ASHS_TARGET_ATLAS_FOR_HISTMATCH?}]}
+  cp -av $WORK/atlas/$HMID/mprage.nii.gz $WORK/final/ref_hm/ref_mprage.nii.gz
+  cp -av $WORK/atlas/$HMID/tse.nii.gz $WORK/final/ref_hm/ref_tse.nii.gz
+
+  popd
+}
+
+# Resample all atlas images to the template
+function ashs_atlas_resample_tse_to_template()
+{
+  # Now resample each atlas to the template ROI chunk, setting up for n-squared 
+  # registration.
+  for ((i=0;i<$N;i++)); do
+    export id=${ATLAS_ID[i]}
+    qsub $QOPTS -j y -o $WORK/dump -cwd -V -N "ashs_atlas_resample_${id}" \
+      $ROOT/bin/ashs_atlas_resample_to_template_qsub.sh
+  done
+
+  # Wait for jobs to complete
+  qwait "ashs_atlas_resample_*"
+}
+
+# This is a high-level routine called from the atlas code to run the pairwise registration
+function ashs_atlas_register_to_rest()
+{
+  # Launch all the individual registrations
+  for id in ${ATLAS_ID[*]}; do
+    for side in left right; do
+      for tid in ${ATLAS_ID[*]}; do
+
+        if [[ $id != $tid ]]; then
+
+          export id tid side
+          qsub $QOPTS -j y -o $WORK/dump -cwd -V -N "ashs_nsq_${id}_${tid}" \
+            $ROOT/bin/ashs_atlas_pairwise_qsub.sh
+
+        fi
+      done
+    done
+  done
+
+  # Wait for the jobs to be done
+  qwait "ashs_nsq_*"
+}
+
+
+# Organize the output directory
+function ashs_atlas_organize_final()
+{
+  # The final directory
+  FINAL=$WORK/final
+
+  # Generate a file that makes this an ASHS atlas
+  cat > $FINAL/ashs_atlas_vars.sh <<-CONTENT
+		ASHS_ATLAS_VERSION=$(ashs_version)
+		ASHS_ATLAS_N=$N
+	CONTENT
+
+  # Generate directories for each of the training images
+  for ((i=0;i<$N;i++)); do
+
+    # Use codes for atlas names, to make this publishable online
+    CODE=$(printf train%03d $i)
+    id=${ATLAS_ID[i]}
+
+          # The output directory for this atlas
+    ODIR=$FINAL/train/$CODE
+    IDIR=$WORK/atlas/$id
+    mkdir -p $ODIR
+
+    # Copy the stuff we need into the atlas directory
+    for side in left right; do
+
+      # Copy the images 
+      cp -av \
+        $IDIR/tse_native_chunk_${side}.nii.gz \
+        $IDIR/tse_native_chunk_${side}_seg.nii.gz \
+        $IDIR/tse_to_chunktemp_${side}.nii.gz \
+        $IDIR/tse_to_chunktemp_${side}_regmask.nii.gz \
+        $IDIR/mprage_to_chunktemp_${side}.nii.gz \
+        $ODIR/
+
+      # Copy the transformation to the template space. We only care about
+      # the part of this transformation that involves the template, to we
+      # can save a little space here. 
+      c3d $IDIR/mprage_to_chunktemp_${side}.nii.gz -popas REF \
+        -mcs $IDIR/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz \
+        -foreach -insert REF 1 -reslice-identity -info -endfor \
+        -omc $ODIR/ants_t1_to_chunktemp_${side}Warp.nii.gz 
+
+    done
+
+    # Copy the affine transforms
+    cp -av \
+      $IDIR/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+      $IDIR/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
+      $ODIR/
+
+  done
+
+  # If a custom config file specified, put a copy of it into the atlas directory
+  if [[ ! ${ASHS_CONFIG} == ${ASHS_ROOT}/bin/ashs_config.sh ]]; then
+    cp -av $ASHS_CONFIG $FINAL/ashs_user_config.sh
+  else
+    rm -rf $FINAL/ashs_user_config.sh
+    touch $FINAL/ashs_user_config.sh
+  fi
+
+  # Copy the system config as well
+  cp -av $ASHS_ROOT/bin/ashs_config.sh $FINAL/ashs_system_config.sh
+
+  # Copy the adaboost training files
+  for side in left right; do
+    mkdir -p $FINAL/adaboost/${side}
+    cp -av $WORK/train/main_${side}/adaboost-* $FINAL/adaboost/${side}/
+  done
+}
+
+
+
+# Top level code for AdaBoost training and cross-validation
+function ashs_atlas_adaboost_train()
+{
+  # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
+  # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
+  NXVAL=$(cat $XVAL | wc -l)
+
+  # Arrays for the main training
+  XV_TRAIN[0]=${ATLAS_ID[*]}
+  XV_TEST[0]=""
+  XVID[0]="main"
+
+  # Arrays for the cross-validation training
+  for ((jx=1;jx<=$NXVAL;jx++)); do
+
+    XV_TEST[$jx]=$(cat $XVAL | awk "NR==$jx { print \$0 }")
+    XV_TRAIN[$jx]=$(echo $( for((i=0;i<$N;i++)); do echo ${ATLAS_ID[i]}; done | awk "\"{${XV_TEST[$jx]}}\" !~ \$1 {print \$1}"))
+    XVID[$jx]=xval$(printf %04d $jx)
+
+  done
+
+  # Perform initial multi-atlas segmentation
+  for ((i=0; i<=$NXVAL; i++)); do
+    for side in left right; do
+
+      WTRAIN=$WORK/train/${XVID[i]}_${side}
+      mkdir -p $WTRAIN
+
+      # Perform the segmentation in a leave-one-out fashion among the training images
+      for id in ${XV_TRAIN[i]}; do
+
+        # The atlas set for the cross-validation
+        TRAIN=$(echo ${XV_TRAIN[i]} | sed -e "s/\<$id\>//g")
+        echo $TRAIN
+
+        # The output path for the segmentation result
+        FNOUT=$WTRAIN/loo_seg_${id}_${side}.nii.gz
+
+        # Perform the multi-atlas segmentation
+        export id TRAIN FNOUT side
+
+        # Submit the label fusion job
+        qsub $QOPTS -j y -o $WORK/dump -cwd -V -N "ashs_lf_${XVID[i]}_${side}_loo_${id}" \
+           $ROOT/bin/ashs_atlas_lf_qsub.sh
+
+      done
+    done
+  done
+
+  # Wait for all the segmentations to finish  
+  qwait "ashs_lf_*_loo_*"
+
+  # Now perform the training
+  for ((i=0; i<=$NXVAL; i++)); do
+    for side in left right; do
+
+      WTRAIN=$WORK/train/${XVID[i]}_${side}
+      pushd $WTRAIN
+
+      # Create text files for input to bl
+      rm -rf graylist.txt autolist.txt truthlist.txt
+      for id in ${XV_TRAIN[i]}; do
+        echo $WORK/atlas/$id/tse_native_chunk_${side}.nii.gz >> graylist.txt
+        echo $WORK/atlas/$id/tse_native_chunk_${side}_seg.nii.gz >> truthlist.txt
+        echo loo_seg_${id}_${side}.nii.gz >> autolist.txt
+      done
+
+      # Count the unique labels in the dataset. Note that for label 0 we perform the dilation to estimate
+      # the actual number of background voxels
+      for fn in $(cat truthlist.txt); do 
+        c3d $fn -dup -lstat; 
+      done | awk '$1 ~ /[0-9]+/ && $1 > 0 { h[$1]+=$6; h[0]+=$6 } END {for (q in h) print q,h[q] }' | sort -n > counts.txt
+
+      # For each label, launch the training job. The number of samples is scaled to have roughly 1000 per label
+      for label in $(cat counts.txt | awk '{print $1}'); do
+
+        q=$ASHS_EC_TARGET_SAMPLES
+        FRAC=$(cat counts.txt | awk "\$1==$label {print \$2 < $q ? 1 : $q/\$2}")
+
+        echo "Label $label fraction $FRAC"
+        qsub $QOPTS -j y -o $WORK/dump -cwd -V -N "ashs_bl_${XVID[i]}_${side}_${label}" -b y \
+           bl graylist.txt truthlist.txt autolist.txt $label \
+           $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost
+
+      done
+
+      popd
+
+    done
+  done
+
+  # Wait for the training to finish  
+  qwait "ashs_bl_*"
+
+  # Now, for each cross-validation experiment perform voting followed by bias correction
+  for ((i=1; i<=$NXVAL; i++)); do
+    for side in left right; do
+
+      TRAIN=${XV_TRAIN[i]}
+
+      # Iterate over the test subjects
+      for id in ${XV_TEST[i]}; do
+
+        XID=${XVID[i]}
+
+        export XID TRAIN side id
+        qsub $QOPTS -j y -o $WORK/dump -cwd -V -N "ashs_xval_${XID}_${id}_${side}" \
+          $ROOT/bin/ashs_atlas_loo_qsub.sh
+
+      done
+    done
+  done
+
+  qwait "ashs_xval_*"
+}

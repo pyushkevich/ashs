@@ -1,4 +1,5 @@
 #!/bin/bash
+source ashs_lib.sh
 
 # TODO:
 #   - Check that the data are in the right orientation, or handle 
@@ -25,6 +26,7 @@ function usage()
       -I string         Subject ID (for stats output). Defaults to last word of working dir.
       -q string         List of additional options to pass to qsub (Sun Grid Engine)
       -V                Display version information and exit
+      -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		stages:
 		  0:                initialize work directory
 		  1:                fit to population template
@@ -43,33 +45,8 @@ function usage()
 	USAGETEXT
 }
 
-function vers() 
-{
-  ASHS_VERSION_SVN=$(cat $ASHS_ROOT/bin/ashs_version.txt)
-  echo $ASHS_VERSION_SVN
-}
-
-# The ROOT variable must be set
-if [[ ! $ASHS_ROOT ]]; then
-  echo "ASHS_ROOT is not set. Please set this variable to point to the root ASHS directory"
-  exit -1;
-fi
-
-# Get the architecture and check ability to run binaries
-ARCH=$(uname);
-BIN=$ASHS_ROOT/ext/$ARCH/bin
-BIN_ANTS=$BIN/ants
-BIN_FSL=$BIN/fsl
-if [[ ! $($BIN/c3d -version | grep 'Version') ]]; then
-  echo "Can not execute command \'$BIN/c3d -version\'. Wrong architecture?"
-  exit -1
-fi
-
-# Check that the data directory exists
-if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
-  echo "Data files appear to be missing. Can't locate $ASHS_ROOT/data/train/train21/tse_native.nii.gz"
-  exit -1
-fi
+# Run parent-level code
+source ashs_common_master.sh
 
 # Print usage by default
 if [[ $# -lt 1 ]]; then
@@ -77,8 +54,11 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+# Configuration file
+ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+
 # Read the options
-while getopts "g:f:w:s:r:l:q:I:NdhV" opt; do
+while getopts "g:f:w:s:r:l:q:I:C:NdhV" opt; do
   case $opt in
 
     g) MPRAGE=$OPTARG;;
@@ -90,6 +70,7 @@ while getopts "g:f:w:s:r:l:q:I:NdhV" opt; do
 		r) SLR=$OPTARG;;
     I) SUBJID=$OPTARG;;
     q) QOPTS=$OPTARG;;
+    C) ASHS_CONFIG=$OPTARG;;
     d) set -x -e;;
     h) usage; exit 0;;
     V) vers; exit 0;;
@@ -112,7 +93,7 @@ elif [[ ! $WORK ]]; then
 fi
 
 # Check that the dimensions of the T2 image are right
-DIMS=$($BIN/c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
+DIMS=$($ASHS_BIN/c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
 if [[ ${DIMS[2]} > ${DIMS[0]} || ${DIMS[2]} > ${DIMS[1]} ]]; then
   echo "The T2-weighted image has wrong dimensions (fails dim[2] < min(dim[0], dim[1])"
   exit -1
@@ -126,9 +107,12 @@ fi
 # Create the working directory and the dump directory
 mkdir -p $WORK $WORK/dump $WORK/final
 
+# Read the configuration file
+source $ASHS_CONFIG
+
 # Run the stages of the script
 ROOT=$ASHS_ROOT; 
-export ROOT BIN WORK SKIP_ANTS SKIP_RIGID SLL SLR SUBJID BIN_ANTS BIN_FSL
+export ROOT PATH ASHS_BIN WORK SKIP_ANTS SKIP_RIGID SLL SLR SUBJID BIN_ANTS BIN_FSL ASHS_CONFIG
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
@@ -154,8 +138,8 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     echo "Running stage 0: initialize work directory"
 
     # Copy the input images into the working directory
-    $BIN/c3d $MPRAGE -type ushort -o $WORK/mprage.nii.gz
-    $BIN/c3d $TSE -type ushort -o $WORK/tse.nii.gz ;;
+    $ASHS_BIN/c3d $MPRAGE -type ushort -o $WORK/mprage.nii.gz
+    $ASHS_BIN/c3d $TSE -type ushort -o $WORK/tse.nii.gz ;;
 
     1) 
     # Template matching

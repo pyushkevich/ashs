@@ -1,0 +1,137 @@
+#!/bin/bash
+
+# -------------------------------------
+# ASHS configuration and parameter file
+# -------------------------------------
+#
+# This file contains default settings for ASHS. Users can make a copy of this
+# file and change parameters to better suit their data. To use this file, make
+# a copy of the $ASHS_ROOT/bin/ashs_config.sh, edit the copy, and pass the
+# copy to the ashs_main or ashs_train scripts using the -C flag. 
+
+# ---------------------------------
+# TSE resolution-related parameters
+# ---------------------------------
+#
+# The default parameters are configured for TSE images with 0.4 x 0.4 x 2.0
+# voxel resolution, with a field of view that extends past the skull in the
+# oblique coronal plane. If your data is different, you may want to change 
+# these parameters
+
+# The resampling factor to make data isotropic. The data does not have to be
+# exactly isotropic. I suggest keeping all numbers multiples of 100. 
+ASHS_TSE_ISO_FACTOR="100x100x500%"
+
+# The cropping applied to the TSE volume before rigid registration to the T1
+# volume. If the field of view in the TSE images is limited, you may want to
+# change this. Default crops 20% of the image in the oblique coronal plane
+ASHS_TSE_ISO_REGION_CROP="20x20x0% 60x60x100%"
+
+# ----------------------------------
+# TSE-MPRAGE registration parameters
+# ----------------------------------
+
+# The search parameters for FLIRT. You may want to play with these if the
+# rigid alignment of T1 and T2 is failing. You can always override the results
+# for any given image manually by performing the registration yourself and
+# calling ASHS with the -N flag (to not rerun existing registrations)
+ASHS_FLIRT_MULTIMODAL_OPTS="-searchrx -5 5 -searchry -5 5 -searchrz -5 5 -coarsesearch 3 -finesearch 1 -searchcost normmi"
+
+
+# ------------------------------------------------
+# MPRAGE template creation/registration parameters
+# ------------------------------------------------
+#
+# These parameters affect registration to the template space in ashs_main and
+# template construction in ashs_train
+
+# The number of iterations for ANTS when registering MPRAGE to the template.
+# This is one of the main parameters affecting the runtime of the program,
+# since this is the only whole-brain registration performed by ASHS. See ANTS
+# documentation for the meaning of this.
+ASHS_TEMPLATE_ANTS_ITER="60x20x0"
+
+# The amount of dilation applied to the average hippocampus mask in order to
+# create a registration mask.
+ASHS_TEMPLATE_ROI_DILATION="10x10x10vox"
+
+# The size of the margin applied to the above registration mask when creating
+# the ROI-specific template. This option only affects ashs_train. You can
+# specify this in vox or mm units.
+ASHS_TEMPLATE_ROI_MARGIN="4x4x4vox"
+
+# The target resolution of the template (only when building a template with
+# ashs_train). This is specified in units of mm. The target resolulion should
+# roughly match the in-plane resolution of the TSE data, but there is no hard
+# rule for this. Setting it too high will slow everything down.
+ASHS_TEMPLATE_TARGET_RESOLUTION="0.4688x0.4688x0.4688mm"
+
+
+# -----------------------------
+# Histogram matching parameters
+# -----------------------------
+#
+
+# The atlas (index into the list of atlases) used as the target for histogram
+# matching. This is only used in ashs_train, and the selected atlas is copied
+# into the ref_hm directory. By default, the first atlas is used
+ASHS_TARGET_ATLAS_FOR_HISTMATCH=0
+
+# The number of control points for histogram matching. See c3d -histmatch
+# command. This is used for atlas building and application
+ASHS_HISTMATCH_CONTROLS=5
+
+
+# -----------------------------------------------
+# Pairwise multi-modality registration parameters
+# -----------------------------------------------
+
+# The number of ANTS iterations for running pairwise registration
+ASHS_PAIRWISE_ANTS_ITER="60x60x20"
+
+# The step size for ANTS
+ASHS_PAIRWISE_ANTS_STEPSIZE="0.25"
+
+# The relative weight given to the T1 image in the pairwise registration
+# Setting this to 0 makes the registration only use the TSE images, which
+# may be the best option. This has not been tested extensively. Should be 
+# a floating point number between 0 and 1
+ASHS_PAIRWISE_ANTS_T1_WEIGHT=0
+
+
+# -----------------------------------------------
+# Label Fusion Parameters
+# -----------------------------------------------
+
+# Label fusion strategy. This is the -m parameter to the label_fusion command
+# I would stick to the defaults
+ASHS_MALF_STRATEGY="Joint[0.1,2]"
+
+# Patch size (specified as radius) for patch search on the MALF method. This is
+# the size of the patch used to compute similarity between voxels.
+ASHS_MALF_PATCHRAD="3x3x1"
+
+# Neighborhood size (specified as radius) for patch search. This is the range
+# where we search for matching patches
+ASHS_MALF_SEARCHRAD="3x3x1"
+
+
+# -----------------------------------------------
+# AdaBoost Bias Correction Parameters
+# -----------------------------------------------
+
+# Dilation radius. This is the radius applied to the automatic segmentation 
+# result to determine the ROI where error correction takes place. We assume
+# that all the errors made by the automatic method are in this ROI. 
+ASHS_EC_DILATION=1
+
+# Target number of samples for AdaBoost training. If there are more samples,
+# only a random fraction of the samples will be used for training. Lower
+# values speed up training
+ASHS_EC_TARGET_SAMPLES=20000
+
+# Number of iterations for AdaBoost training.
+ASHS_EC_ITERATIONS=500
+
+# Size of the neighborhood used to derive features for AdaBoost.
+ASHS_EC_PATCH_RADIUS=6x6x0

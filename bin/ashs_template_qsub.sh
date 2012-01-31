@@ -2,6 +2,9 @@
 #$ -S /bin/bash
 set -x -e
 
+source $ASHS_CONFIG
+source ashs_lib.sh
+
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_template_qsub.sh
@@ -25,31 +28,7 @@ $BIN/c3d $ROOT/data/ref_hm/ref_tse.nii.gz $WORK/tse.nii.gz -histmatch 5 -o $WORK
 $BIN/c3d $ROOT/data/ref_hm/ref_mprage.nii.gz $WORK/mprage.nii.gz -histmatch 5 -o $WORK/mprage_histmatch.nii.gz
 
 # --- RIGID ALIGNMENT T1/T2 ---
-if [[ -f $WFSL/flirt_t2_to_t1_ITK.txt && $SKIP_RIGID ]]; then
-  
-  echo "Skipping Rigid Registration"
-
-else
-
-  # Use FLIRT to match T2 to T1
-  export FSLOUTPUTTYPE=NIFTI_GZ
-
-  # Make the TSE image isotropic and extract a chunk
-  $BIN/c3d $WORK/tse.nii.gz -resample 100x100x500% -region 20x20x0% 60x60x100% -o $WFSL/tse_iso.nii.gz
-
-  # Reslice T1 into space of T2 chunk
-  $BIN/c3d $WFSL/tse_iso.nii.gz $WORK/mprage.nii.gz -reslice-identity -o $WFSL/mprage_to_tse_iso.nii.gz
-
-  # Run flirt with T2 as reference (does it matter at this point?)
-  $BIN_FSL/flirt -v -ref $WFSL/tse_iso.nii.gz -in $WFSL/mprage_to_tse_iso.nii.gz -o $WFSL/test_flirt.nii.gz \
-    -omat $WFSL/flirt_intermediate.mat -cost normmi -dof 6 \
-    -searchrx -5 5 -searchry -5 5 -searchrz -5 5 -coarsesearch 3 -finesearch 1 -searchcost normmi
-
-  # Convert the T1-T2 transform to ITK
-  $BIN/c3d_affine_tool $WFSL/flirt_intermediate.mat -ref $WFSL/tse_iso.nii.gz -src $WFSL/mprage_to_tse_iso.nii.gz \
-    -fsl2ras -inv -oitk $WFSL/flirt_t2_to_t1_ITK.txt
-
-fi
+ashs_align_t1t2 $WORK $WFSL
 
 # Use FLIRT to register T1 to template
 if [[ -f $WFSL/flirt_t1_to_template_ITK.txt && $SKIP_RIGID ]]; then
@@ -103,29 +82,5 @@ $BIN_ANTS/WarpImageMultiTransform 3 $WORK/mprage.nii.gz \
 $BIN_ANTS/WarpImageMultiTransform 3 $WORK/tse.nii.gz $WANT/reslice_tse_to_template.nii.gz -R $TEMP_T1_FULL \
   $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
 
-# Apply the transformation to the masks
-for side in left right; do
-
-  # Define the reference space
-  REFSPACE=$ROOT/data/template/refspace_${side}.nii.gz
-
-  # Map the image to the target space
-  $BIN_ANTS/WarpImageMultiTransform 3 $WORK/tse_histmatch.nii.gz \
-    $WORK/tse_to_chunktemp_${side}.nii.gz -R $REFSPACE \
-    $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
-
-  # Map the image to the target space
-  $BIN_ANTS/WarpImageMultiTransform 3 $WORK/mprage_histmatch.nii.gz \
-    $WORK/mprage_to_chunktemp_${side}.nii.gz -R $REFSPACE \
-    $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt 
-
-  # Create a custom mask for the TSE image
-  $BIN/c3d $WORK/tse_to_chunktemp_${side}.nii.gz -verbose -pim r -thresh 0.001% inf 1 0 \
-    -erode 0 4x4x4 $REFSPACE -times -type uchar -o $WORK/tse_to_chunktemp_${side}_regmask.nii.gz
-
-  # Create a combined warp from chunk template to T2 native space
-  $BIN_ANTS/ComposeMultiTransform 3 $WANT/ants_t2_to_temp_fullWarp.nii -R $REFSPACE \
-    $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
-
-done
-
+# Transform all of the images into the chunk template space
+ashs_reslice_to_template $WORK $ROOT/data
