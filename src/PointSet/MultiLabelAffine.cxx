@@ -1,3 +1,36 @@
+/**
+  PROGRAM:    MultiLabelAffine.cxx
+  AUTHOR:     Paul A. Yushkevich, University of Pennsylvania
+  LICENSE:    GNU GPL
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+  COPYRIGHT   2012 Paul A. Yushkevich
+
+  CITATION:
+
+    This program implements the method decribed in the paper
+
+    Papademetris, X., Jackowski, A., Schultz, R., Staib, L., & Duncan, J.
+       (2003). Computing 3D non-rigid brain registration using extended robust
+       point matching for composite multisubject fmri analysis. Medical Image
+       Computing and Computer-Assisted Intervention-Miccai 2003, 788-795
+
+    I peeked at Xenios's (XP) BioImageSuite when writing this code, but mostly
+    this code is based off my MATLAB implementation of XP's paper.
+*/
+
 #include <itkImageFileReader.h>
 #include <itkImage.h>
 #include <itkImageRegionIterator.h>
@@ -37,15 +70,51 @@ struct Parameters
 {
   // Filenames
   string fnMoving, fnTarget, fnOutput;
+  double n_bins;
+  double temp_init;
+  double anneal_rate;
+  bool debug;
 };
 
 int usage()
 {
-  cout << "ml_affine: multi-label image affine registration" << endl
-       << "usage:" << endl
-       << "  ml_affine [options] target.nii moving.nii output.txt" << endl;
+  const char *usage_text =
+      "ml_affine: multi-label image affine registration      \n"
+      "usage:\n"
+      "  ml_affine [options] target.nii moving.nii output.mat\n"
+      "required parameters:\n"
+      "  target       A NIFTI images encoding a multi-label segmentation,\n"
+      "               i.e., an image volume where each voxel is assigned a label.\n"
+      "  moving       An image that you want to register to the target image\n"
+      "  output.mat   Filename where the output transform is stored.\n"
+      "options:\n"
+      "  -c value     Determines the bin size for quadric clustering.\n"
+      "               The value is the number of bins along the shortest\n"
+      "               dimension in the dataset. Default: 8.\n"
+      "               See help for vtkQuadricClustering.\n"
+      "  -T value     Initial temperature for annealing. This is not a \n"
+      "               trivial parameter to set, as it depends on the \n"
+      "               distances in the data. A good rule of thumb is that \n"
+      "               the fraction of entries in M that are less than 0.001 \n"
+      "               should be around 50%. This is the MFrac column in the \n"
+      "               output. If it's more like 0.8-0.9 range, reduce T. If \n"
+      "               it's much less than 0.5, increase T. Default value is 4.\n"
+      "  -a value     Annealing rate, default = 0.93. Probably does not matter.\n"
+      "  -d           Debug mode. Program will spit out some vtk meshes in the \n"
+      "               current directory.\n"
+      "notes:\n"
+      "  - To reslice the moving image to the target image, use the c3d command\n"
+      "       c3d target.nii moving.nii -int 0 -reslice-matrix output.mat -o out.nii\n"
+      "  - The program should terminate after 20-40 iterations. The RMSD number, which\n"
+      "    is the RMS distance between the two meshes should go down as you optimize.\n"
+      "  - The number of points resulting from quadric clustering should be in the \n"
+      "    range of 200-500. Too many points will be slow and use too much memory.\n";
+
+  cout << usage_text;
   return -1;
 }
+
+
 
 template<class TImage>
 void ConnectITKToVTK(itk::VTKImageExport<TImage> *fltExport,vtkImageImport *fltImport)
@@ -64,7 +133,20 @@ void ConnectITKToVTK(itk::VTKImageExport<TImage> *fltExport,vtkImageImport *fltI
   fltImport->SetCallbackUserData( fltExport->GetCallbackUserData());
 }
 
+void DebugDumpMesh(Parameters &param, vtkPolyData *p, string name)
+{
+  if(param.debug)
+    {
+    string filename = string("mlaffine_") + name + ".vtk";
+    vtkPolyDataWriter *wr = vtkPolyDataWriter::New();
+    wr->SetFileName(filename.c_str());
+    wr->SetInput(p);
+    wr->Update();
+    }
+}
+
 void GetLabeledBoundaryMesh(LabelImageType *image, set<int> labels,
+                            Parameters &param, string name,
                             vnl_matrix<double> &P, vnl_vector<double> &Pl)
 {
   // Read the input image
@@ -160,17 +242,36 @@ void GetLabeledBoundaryMesh(LabelImageType *image, set<int> labels,
   outgrid->SetPolys(allCells);
   outgrid->GetPointData()->SetScalars(allLabels);
 
+  // Figure out the number of divisions
+  outgrid->ComputeBounds();
+  double *bounds = outgrid->GetBounds();
+  double bx = bounds[1] - bounds[0];
+  double by = bounds[3] - bounds[2];
+  double bz = bounds[5] - bounds[4];
+  double bmin = std::min(bx, std::min(by, bz));
+  double binw = bmin / param.n_bins;
+  int divx = (int) ceil(bx / binw - 1.e-6);
+  int divy = (int) ceil(by / binw - 1.e-6);
+  int divz = (int) ceil(bz / binw - 1.e-6);
+
   // Cluster points
   vtkQuadricClustering *cluster = vtkQuadricClustering::New();
-  cluster->SetNumberOfDivisions(16,16,4);
+  cluster->SetNumberOfDivisions(divx,divy,divz);
   cluster->SetInput(outgrid);
   cluster->SetUseInputPoints(1);
   cluster->Update();
 
-  vtkPolyDataWriter *writer = vtkPolyDataWriter::New();
-  writer->SetFileName("dump.vtk");
-  writer->SetInput(cluster->GetOutput());
-  writer->Update();
+  // Report on the clustering of the dataset
+  printf("QuadricCluster mesh '%s' to %d x %d x %d bins. "
+         "Vertex reduction %d => %d.\n",
+         name.c_str(),
+         divx, divy, divz,
+         (int) outgrid->GetNumberOfPoints(),
+         (int) cluster->GetOutput()->GetNumberOfPoints());
+
+  DebugDumpMesh(param, outgrid, name + "_unclustered");
+  DebugDumpMesh(param, cluster->GetOutput(), name + "_clustered");
+
 
   // Construct the output data
   vtkPolyData *result = cluster->GetOutput();
@@ -183,8 +284,6 @@ void GetLabeledBoundaryMesh(LabelImageType *image, set<int> labels,
     P(i,2) = result->GetPoint(i)[2];
     Pl[i] = result->GetPointData()->GetScalars()->GetTuple1(i);
     }
-
-
 }
 
 void normalize_pointset(
@@ -211,6 +310,7 @@ void softassign(
     vnl_matrix<double> Y,
     vnl_vector<double> Xlab,
     vnl_vector<double> Ylab,
+    Parameters &param,
     vnl_matrix_fixed<double,4,4> &xform)
 {
   typedef vnl_vector_fixed<double, 3> Vec3;
@@ -229,9 +329,9 @@ void softassign(
 
 
   // Initialize the annealing parameter
-  double temp = 4.0; // BE SMARTER!
-  double temptarget = 0.1;
-  double tempscale = 0.93;
+  double temp = param.temp_init;
+  double temptarget = 0.01 * param.temp_init;
+  double tempscale = param.anneal_rate;
 
   // Apply affine transform
   vnl_matrix<double> GX = X, V(nx,3);
@@ -248,6 +348,9 @@ void softassign(
     // Row and column min square distance
     vnl_vector<double> md_row(ny), md_col(nx);
     md_row.fill(1e100); md_col.fill(1e100);
+
+    // Keep track of entries in M that are less than threshold
+    int nUnderThreshold = 0, nTotalNonZero = 0;
 
     // Compute the pairwise distances between points
     for(int i = 0; i < nx; i++)
@@ -268,6 +371,9 @@ void softassign(
             md_col(i) = dst_sq;
           if(md_row(j) > dst_sq)
             md_row(j) = dst_sq;
+
+          nUnderThreshold += (M(i,j) < 0.001) ? 1 : 0;
+          nTotalNonZero++;
           }
         else
           {
@@ -379,8 +485,10 @@ void softassign(
     foutl /= nx;
 
     // Compute the difference
-    printf("Iter %03d \t Temp %8.2f \t Delta %8.2f \t OutFr %8.4f \t RMSD %10.4f\n",
-           ++iter, temp, delta, foutl, rmsd);
+    printf("Iter %3d   Temp %6.2f   Delta %8.2f   OutFr %8.4f   MFrac %8.4f   RMSD %10.4f\n",
+           ++iter, temp, delta, foutl,
+           1.0 - (nUnderThreshold * 1.0 / nTotalNonZero),
+           rmsd);
 
 
     // Quit if the outlier fraction is too large. This means annealing is
@@ -413,6 +521,57 @@ int main(int argc, char *argv[])
   p.fnTarget = argv[argc-3];
   p.fnMoving = argv[argc-2];
   p.fnOutput = argv[argc-1];
+  p.anneal_rate = 0.93;
+  p.n_bins = 8;
+  p.temp_init = 4.0;
+  p.debug = false;
+
+  // Read the optional parameters
+  for(int iarg = 1; iarg < argc-3; iarg++)
+    {
+    string arg = argv[iarg];
+    if(arg == "-T")
+      {
+      p.temp_init = atof(argv[++iarg]);
+      }
+    else if(arg == "-a")
+      {
+      p.anneal_rate = atof(argv[++iarg]);
+      }
+    else if(arg == "-c")
+      {
+      p.n_bins = atoi(argv[++iarg]);
+      }
+    else if(arg == "-d")
+      {
+      p.debug = true;
+      }
+    else
+      {
+      cerr << "Bad parameter " << arg << endl;
+      return -1;
+      }
+    }
+
+  // Check parameters
+  if(p.temp_init <= 0.0)
+    {
+    cerr << "Bad temperature value " << p.temp_init << endl;
+    return -1;
+    }
+
+  if(p.anneal_rate <= 0.0 || p.anneal_rate >= 1.0)
+    {
+    cerr << "Bad annealing rate value, must be in [0 1] range, is "
+         << p.anneal_rate << endl;
+    return -1;
+    }
+
+  if(p.n_bins <= 0)
+    {
+    cerr << "Bad cluster bin number " << p.n_bins << endl;
+    return -1;
+    }
 
   // Read the input datasets
   typedef ImageFileReader<LabelImageType> ReaderType;
@@ -440,19 +599,24 @@ int main(int argc, char *argv[])
   for(set<int>::iterator ic = lt.begin(); ic!=lt.end(); ic++)
     if(lm.find(*ic) != lm.end() && *ic > 0)
       {
-      printf("Common label: %d\n", *ic);
       lcommon.insert(*ic);
       }
 
   // Generate point data for the labels
   vnl_matrix<double> X, Y;
   vnl_vector<double> lX, lY;
-  GetLabeledBoundaryMesh(target, lcommon, X, lX);
-  GetLabeledBoundaryMesh(moving, lcommon, Y, lY);
+  GetLabeledBoundaryMesh(target, lcommon, p, "target", X, lX);
+  GetLabeledBoundaryMesh(moving, lcommon, p, "moving", Y, lY);
+
+  if(X.rows() > 1000 || Y.rows() > 1000)
+    {
+    cerr << "Too many points, this will be too slow.\n"
+            "You should reduce clustering bin size.\n" << endl;
+    }
 
   // Now execute the softassign algorithm
   vnl_matrix_fixed<double,4,4> G;
-  softassign(X,Y,lX,lY,G);
+  softassign(X,Y,lX,lY,p,G);
 
   // Store the matrix in the text file
   ofstream fout(p.fnOutput.c_str());
