@@ -17,8 +17,6 @@ BLOCK1
 # Go to my directory
 pushd $WORK/atlas/$id
 
-<<'SKIP'
-
 # Copy the warps from the template building directory to the atlas directory
 mkdir -p ants_t1_to_temp
 for what in Warp.nii.gz InverseWarp.nii.gz Affine.txt; do
@@ -31,8 +29,6 @@ c3d $WORK/final/ref_hm/ref_tse.nii.gz tse.nii.gz \
 
 c3d $WORK/final/ref_hm/ref_mprage.nii.gz mprage.nii.gz \
   -histmatch ${ASHS_HISTMATCH_CONTROLS} -o mprage_histmatch.nii.gz
-
-SKIP
 
 # Reslice the atlas to the template
 ashs_reslice_to_template . $WORK/final

@@ -1,5 +1,4 @@
 #!/bin/bash
-source ashs_lib.sh
 
 # TODO:
 #   - Check that the data are in the right orientation, or handle 
@@ -12,41 +11,36 @@ function usage()
 		usage:
 		  ashs_main [options]
 		required options:
+      -a dir            Location of the atlas directory. Can be a full pathname or a
+                        relative directory name under ASHS_ROOT/data directory. 
 		  -g image          Filename of 3D (g)radient echo MRI (MPRAGE, T1w)
 		  -f image          Filename of 2D focal (f)ast spin echo MRI (TSE, T2w)
 		  -w path           Working/output directory
-		  -r image          Manual slice labeling of the right hippocampus (see below)
-		  -l image          Manual slice labeling of the left hippocampus (see below)
 		optional:
 		  -d                Enable debugging
 		  -h                Print help
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
-	                            exists, don't run ANTS/FLIRT again
+	                      exists, don't run ANTS/FLIRT again
+      -T                Tidy mode. Cleans up files once they are unneeded. The -N option will
+			                  have no effect in tidy mode, because ANTS/FLIRT results will be erased.
       -I string         Subject ID (for stats output). Defaults to last word of working dir.
-      -q string         List of additional options to pass to qsub (Sun Grid Engine)
       -V                Display version information and exit
       -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		stages:
-		  0:                initialize work directory
 		  1:                fit to population template
 		  2:                multi-atlas registration
 		  3:                consensus segmentation using voting
 		  4:                apply slice boundaries from -l/-r inputs
 		  5:                learning-based bias correction
 		  6:                q/a
-		manual slice labeling (-r. -l options):
-		  It is recommended that you supply images where slices belonging to the
-		  body/head/tail of the hippocampus are labeled 1/5/6 respectively. Only
-		  one voxel per slice needs to be labeled. 
-    data requirements:
       The TSE image slice direction should be z. In other words, the dimension
       of TSE image should be 400x400x30 or something like that, not 400x30x400
 	USAGETEXT
 }
 
 # Run parent-level code
-source ashs_common_master.sh
+source $ASHS_ROOT/bin/ashs_common_master.sh
 
 # Print usage by default
 if [[ $# -lt 1 ]]; then
@@ -57,17 +51,20 @@ fi
 # Configuration file
 ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
 
+# Load the library
+source $ASHS_ROOT/bin/ashs_lib.sh
+
 # Read the options
-while getopts "g:f:w:s:r:l:q:I:C:NdhV" opt; do
+while getopts "g:f:w:s:a:q:I:C:NTdhV" opt; do
   case $opt in
 
+    a) ATLAS=$OPTARG;;
     g) MPRAGE=$OPTARG;;
     f) TSE=$OPTARG;;
     w) WORK=$OPTARG;;
 		s) STAGE_SPEC=$OPTARG;;
 		N) SKIP_ANTS=1; SKIP_RIGID=1; ;;
-		l) SLL=$OPTARG;;
-		r) SLR=$OPTARG;;
+		T) ASHS_TIDY=1;;
     I) SUBJID=$OPTARG;;
     q) QOPTS=$OPTARG;;
     C) ASHS_CONFIG=$OPTARG;;
@@ -79,6 +76,21 @@ while getopts "g:f:w:s:r:l:q:I:C:NdhV" opt; do
 
   esac
 done
+
+# Check the atlas location
+if [[ -f $ATLAS/ashs_atlas_vars.sh ]]; then
+  ASHS_ATLAS=$ATLAS;
+elif [[ -f $ASHS_ROOT/data/$ATLAS/ashs_atlas_vars.sh ]]; then
+  ASHS_ATLAS=$ASHS_ROOT/data/$ATLAS
+else
+  echo "Atlas directory must be specified"
+  exit 2;
+fi
+
+# Check the heuristics in the atlas
+if [[ -f $ASHS_ATLAS/ashs_heuristics.txt ]]; then
+	ASHS_HEURISTICS=$ASHS_ATLAS/ashs_heuristics.txt
+fi
 
 # Make sure all files exist
 if [[ ! $MPRAGE || ! -f $MPRAGE ]]; then
@@ -93,7 +105,7 @@ elif [[ ! $WORK ]]; then
 fi
 
 # Check that the dimensions of the T2 image are right
-DIMS=$($ASHS_BIN/c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
+DIMS=$(c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
 if [[ ${DIMS[2]} > ${DIMS[0]} || ${DIMS[2]} > ${DIMS[1]} ]]; then
   echo "The T2-weighted image has wrong dimensions (fails dim[2] < min(dim[0], dim[1])"
   exit -1
@@ -112,7 +124,8 @@ source $ASHS_CONFIG
 
 # Run the stages of the script
 ROOT=$ASHS_ROOT; 
-export ROOT PATH ASHS_BIN WORK SKIP_ANTS SKIP_RIGID SLL SLR SUBJID BIN_ANTS BIN_FSL ASHS_CONFIG
+export ROOT PATH WORK SKIP_ANTS SKIP_RIGID SUBJID BIN_ANTS BIN_FSL ASHS_CONFIG ASHS_ATLAS
+export ASHS_HEURISTICS ASHS_TIDY
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
@@ -122,24 +135,19 @@ elif [[ $STAGE_SPEC && $STAGE_SPEC =~ "^([0-9]*)\-([0-9]*)$" ]]; then
   STAGE_START=${BASH_REMATCH[1]}
   STAGE_END=${BASH_REMATCH[2]}
 elif [[ ! $STAGE_SPEC ]]; then
-  STAGE_START=0
+  STAGE_START=1
   STAGE_END=15
 else
   echo "Wrong stage specification -s $STAGE_SPEC"
   exit -1;
 fi
 
+# Get the number of atlases, other information
+source $ASHS_ATLAS/ashs_atlas_vars.sh
+
 for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
 
   case $STAGE in 
-
-    0)
-    # Initialize Directory
-    echo "Running stage 0: initialize work directory"
-
-    # Copy the input images into the working directory
-    $ASHS_BIN/c3d $MPRAGE -type ushort -o $WORK/mprage.nii.gz
-    $ASHS_BIN/c3d $TSE -type ushort -o $WORK/tse.nii.gz ;;
 
     1) 
     # Template matching
@@ -149,22 +157,24 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     2) 
     # Multi-atlas matching 
     echo "Running stage 2: normalize to multiple T1/T2 atlases"
-    qsub $QOPTS -t 1-64 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg2" $ROOT/bin/ashs_multiatlas_qsub.sh ;;
+    qsub $QOPTS -t 1-$((ASHS_ATLAS_N*2)) -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg2" \
+      $ROOT/bin/ashs_multiatlas_qsub.sh ;;
 
     3) 
     # Voting
-    echo "Running stage 3: voting"
-    qsub $QOPTS -t 1-2 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg3" $ROOT/bin/ashs_voting_qsub.sh ;;
+    echo "Running stage 3: Label Fusion"
+    qsub $QOPTS -t 1-2 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg3" $ROOT/bin/ashs_voting_qsub.sh 0;;
 
-    4) 
-    # Apply heuristic
-    echo "Running stage 4: apply slice boundaries to segmentation"
-    qsub $QOPTS -t 1-2 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg4" $ROOT/bin/ashs_heuristic_qsub.sh ;;
+		4)
+		# Bootstrapping
+		echo "Running stage 4: Bootstrap segmentation" 
+    qsub $QOPTS -t 1-$((ASHS_ATLAS_N*2)) -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg4" \
+      $ROOT/bin/ashs_bootstrap_qsub.sh ;;
 
-    5) 
-    # Apply AdaBoost voting (this is a hack!)
-    echo "Running stage 5: AdaBoost bias correction"
-    qsub $QOPTS -t 1-2 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg5" $ROOT/bin/ashs_biascorr_qsub.sh ;;
+	  5)
+		# Bootstrap voting
+		echo "Running stage 5: Bootstrap label fusion" 
+    qsub $QOPTS -t 1-2 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg5" $ROOT/bin/ashs_voting_qsub.sh 1;;
 
     6)
     # Final QA
@@ -180,6 +190,11 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     # Fit cm-rep models
     echo "Running stage 8: Thickness analysis"
     qsub $QOPTS -t 1-4 -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg8" $ROOT/bin/ashs_thickness_qsub.sh ;;
+
+    ## 4)
+    ## # Final QA
+    ### echo "Running stage 4: Final QA"
+    ### qsub $QOPTS -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg6" $ROOT/bin/ashs_finalqa_qsub.sh ;;
 
   esac  
 

@@ -8,6 +8,7 @@ function usage()
 		  ashs_train [options]
 		required options:
       -D file           Input data file. See below.
+      -L file           Label description file. See below.
 		  -w path           Working/output directory
 		optional:
 		  -d                Enable debugging
@@ -27,6 +28,24 @@ function usage()
       For each image, the following columns are included:
       
         ID T1_MRI TSE_MRI SEG_LEFT SEG_RIGHT
+
+    label description file:
+      This file is used to define the labels in the segmentation protocol. It is possible to 
+      have the same strugure (e.g., CA1) to have the same label on the left and on the right,
+      or to have then have separate labels. ASHS will handle it either way. The label file is
+      in the ITK-SNAP label format, i.e., a format of the file obtained by running ITK-SNAP
+      and selecting from the menu "Segmentation->Save Label Descriptions". Each line in the file
+      consists of seven numbers separated by whitespace, followed by a string in quotation marks.
+
+          0     0    0    0        0  0  0    "Clear Label"
+          1   255    0    0        1  1  1    "CA1"
+          2     0  255    0        1  1  1    "CA2"
+
+      The entries are: (1) the index of the label; (2-4) the R/G/B components of the color 
+      corresponding to the label (used to generate some figures in ASHS); (5-7) affect the
+      visibility of the label in SNAP; set them to 0 0 0 for the background and 1 1 1 for the
+      foreground labels. The name of the label is in quotation marks. The file can also include
+      comments (lines that start with a # character). 
       
     data requirements:
       The TSE image slice direction should be z. In other words, the dimension
@@ -48,6 +67,12 @@ function usage()
 	USAGETEXT
 }
 
+# Default config
+ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+
+# Load the library
+source $ASHS_ROOT/bin/ashs_lib.sh
+
 # Common code
 source ashs_common_master.sh
 
@@ -57,14 +82,12 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
-# Default config
-ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
-
 # Read the options
-while getopts "C:D:w:s:x:q:r:NdhV" opt; do
+while getopts "C:D:L:w:s:x:q:r:NdhV" opt; do
   case $opt in
 
     D) LISTFILE=$OPTARG;;
+    L) LABELFILE=$OPTARG;;
     w) WORK=$OPTARG;;
 		s) STAGE_SPEC=$OPTARG;;
 		N) SKIP_ANTS=1; SKIP_RIGID=1; ;;
@@ -83,8 +106,13 @@ done
 
 # Check the listfile
 if [[ ! -f $LISTFILE ]]; then
-  echo "Missing data list file (-D)"
+  echo "Missing data list file (-L)"
   exit 1;
+fi
+
+if [[ ! -f $LABELFILE ]]; then
+  echo "Missing label description file (-D)"
+  exit -1;
 fi
 
 # Read the config file
@@ -125,7 +153,7 @@ mkdir -p $WORK $WORK/dump $WORK/final
 # Run the stages of the script
 ROOT=$ASHS_ROOT;
 export ROOT PATH ASHS_BIN WORK SKIP_ANTS SKIP_RIGID ASHS_BIN_ANTS 
-export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS XVAL
+export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS XVAL LABELFILE
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
@@ -141,9 +169,6 @@ else
   echo "Wrong stage specification -s $STAGE_SPEC"
   exit -1;
 fi
-
-# Load the library
-source $ROOT/bin/ashs_lib.sh
 
 declare -F
 
@@ -163,7 +188,7 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     # The first step is to build a template from the atlas images using the standard
     # code in ANTS. For this, we got to copy all the atlases to a common directory
     echo "Running stage 1: build template"
-    ashs_atlas_build_template.sh;;
+    ashs_atlas_build_template;;
 
     2)
 
@@ -185,7 +210,7 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     5)
 
     # Organize everything into an atlas that can be used with the main ASHS script
-    echo "Running stage 4: Organize the output directory"
+    echo "Running stage 5: Organize the output directory"
     ashs_atlas_organize_final;;
 
 

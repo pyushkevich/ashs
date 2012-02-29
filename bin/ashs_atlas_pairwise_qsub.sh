@@ -30,43 +30,9 @@ WREG=tseg_${side}_train${tid}
 mkdir -p $WREG
 
 # Run ANTS with current image as fixed, training image as moving
-if [[ $SKIP_ANTS && -f $WREG/antsregAffine.txt \
-  && -f $WREG/antsregWarp.nii.gz && -f $WREG/antsregInverseWarp.nii.gz ]]; then
+ashs_atlas_pairwise 1
 
-	# If registration exists, skip this step
-	echo "Skipping ANTS registration $side/$tid"
-
-else
-
-  # Are we running multi-component registration
-  if [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print $1 == 0.0}') -eq 1 ]]; then
-
-    # T1 has a zero weight
-    ANTS_METRIC_TERM="-m PR[tse_to_chunktemp_${side}.nii.gz,$TDIR/tse_to_chunktemp_${side}.nii.gz,1,4]"
-    
-  else
-
-    # T1 has non-zero weight
-    T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print 1.0 - $1}')
-    ANTS_METRIC_TERM=\
-      "-m PR[mprage_to_chunktemp_${side}.nii.gz,$TDIR/mprage_to_chunktemp_${side}.nii.gz,$ASHS_PAIRWISE_ANTS_T1_WEIGHT,4] \
-       -m PR[tse_to_chunktemp_${side}.nii.gz,$TDIR/tse_to_chunktemp_${side}.nii.gz,$T2WGT,4] \
-       --use-all-metrics-for-convergence"
-  fi 
-
-	ANTS 3 \
-		-x tse_to_chunktemp_${side}_regmask.nii.gz $ANTS_METRIC_TERM -o $WREG/antsreg.nii.gz \
-
-fi
-
-# Apply the warp to the moving image(s). This is still working in template space
-# PY: I don't think this is needed at all, so I'm skipping it
-<<'NOTNEEDED'
-WarpImageMultiTransform 3 $TDIR/mprage_to_chunktemp_${side}.nii.gz \
-	$WREG/mprage_reslice_to_chunk.nii.gz -R mprage_to_chunktemp_${side}.nii.gz \
-	$WREG/antsregWarp.nii.gz
-NOTNEEDED
-
+<<'TRASH'
 # Warp the moving TSE image into the space of the native TSE image using one interpolation.
 # Since we only care about the region around the segmentation, we use tse_native_chunk
 WarpImageMultiTransform 3 $TDIR/tse.nii.gz \
@@ -107,6 +73,8 @@ done
 # Perform voting using replacement rules
 RULES=$(for ((i=0; i < ${#LSET[*]}; i++)); do echo $i ${LSET[i]}; done)
 c3d $TMPDIR/label_*_warp.nii.gz -vote -replace $RULES -o $WREG/atlas_to_native_segvote.nii.gz
+
+TRASH
 
 # THIS SEEMS BROKEN!
 #WarpImageMultiTransform 3 $TDIR/seg_${side}.nii.gz \

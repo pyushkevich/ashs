@@ -11,60 +11,83 @@ cat <<-BLOCK1
   SUBJECT: ${SUBJID?}
 BLOCK1
 
+function voxel_size()
+{
+	echo $(c3d $1 -info-full | grep Spacing | sed -e "s/[^0-9\.]/ /g" | awk '{print $1*$2*$3}')
+}
+
 # directory for the subfields (separate for different parameter values)
-WSUB=$WORK/subfields
 WSTAT=$WORK/final
 mkdir -p $WSTAT
 
+# Generate a list of subfield indices and names. This awk command skips comment lines,
+# ignores the zero label, extracts the label name from quotes, and replaces whitespace
+# in the label name with underlines
+cat $ASHS_ATLAS/snap/snaplabels.txt | \
+  awk '$1 > 0 {split($0,arr,"\""); sub(/[ \t]+/,"_",arr[2]); print $1,arr[2]}' \
+  > $TMPDIR/labels.txt
+
+LABIDS=($(cat $TMPDIR/labels.txt | awk '{print $1}'))
+LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
+
 # Names of segmentations
-for side in left right; do
+for segtype in corr heur; do
+  for side in left right; do
 
-	SBC=$WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz
-	if [[ -f $SBC ]]; then
+    SBC=$WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
+    if [[ -f $SBC ]]; then
 
-    # Get voxel volume
-    DVOX=($($BIN/c3d $SBC -info | cut -f 3 -d ';' | sed -e "s/.*\[//" -e "s/\].*//" -e 's/, / /g'))
-    VVOX=$(echo "${DVOX[0]} * ${DVOX[1]} * ${DVOX[2]}" | bc -l);
+      # Get voxel volume
+      VVOX=$(voxel_size $SBC)
 
-    # Create an output file
-    FNBODYVOL=$WSTAT/${SUBJID}_${side}_volumes.txt 
-    rm -rf $FNBODYVOL
+      # Create an output file
+      FNBODYVOL=$WSTAT/${SUBJID}_${side}_${segtype}_volumes.txt 
+      rm -rf $FNBODYVOL
 
-    # Dump volumes into that file
-    SUB=("bkg" "CA1" "CA2" "DG" "CA3" "HEAD" "TAIL" "misc" "SUB" "ERC" "PHG")
-    for i in 1 2 3 4 5 6 8 9 10; do
+      # Dump volumes into that file
+      SUB=("bkg" "CA1" "CA2" "DG" "CA3" "HEAD" "TAIL" "misc" "SUB" "ERC" "PHG")
+      for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
 
-      # Get the number of slices in this subfield 
-      NBODY=$($BIN/c3d $SBC -thresh $i $i 1 0 -trim 0mm -info \
-        | grep 'dim = ' | cut -f 1 -d ';' | awk '{print $7;}' | sed -e "s/]//")
+        # The id of the label
+        i=${LABIDS[ilab]};
+        SUB=${LABNAMES[ilab]};
 
-      # Get the volume of this subfield
-      VOLUME=$($BIN/c3d $SBC -thresh $i $i 1 0 -voxel-sum | awk {'print $3'})
+        # Get the number of slices in this subfield 
+        NBODY=$(c3d $SBC -thresh $i $i 1 0 -trim 0mm -info \
+          | grep 'dim = ' | cut -f 1 -d ';' | awk '{print $7;}' | sed -e "s/]//")
 
-      # Get the volume of this subfield
-      VSUB=$(echo "$VVOX * $VOLUME" | /usr/bin/bc -l)
+        # Get the volume of this subfield
+        VOLUME=$(c3d $SBC -thresh $i $i 1 0 -voxel-sum | awk {'print $3'})
 
-      # Write the volume information to output file
-      echo $SUBJID $side ${SUB[i]} $NBODY $VSUB >> $FNBODYVOL
+        # Get the volume of this subfield
+        VSUB=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
 
-    done
+        # Write the volume information to output file
+        echo $SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
 
-	fi
+      done
+
+    fi
+  done
 done
 
 # Last thing: compute ICV (for now using BET mask)
-$BIN/ants/WarpImageMultiTransform 3 $ROOT/data/template/template_bet_mask.nii.gz \
-  $TMPDIR/icv.nii.gz -R $WORK/mprage.nii.gz \
-  -i $WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-  $WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
+if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
-# Get T1 voxel volume
-DVOX=($($BIN/c3d $TMPDIR/icv.nii.gz -info | cut -f 3 -d ';' | sed -e "s/.*\[//" -e "s/\].*//" -e 's/, / /g'))
-VVOX=$(echo "${DVOX[0]} * ${DVOX[1]} * ${DVOX[2]}" | bc -l);
+  # Warp the BET mask
+  WarpImageMultiTransform 3 $ASHS_ATLAS/template/template_bet_mask.nii.gz \
+    $TMPDIR/icv.nii.gz -R $WORK/mprage.nii.gz \
+    -i $WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+    $WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
 
-# Get ICV
-VOLUME=$($BIN/c3d $TMPDIR/icv.nii.gz -thresh 0.5 inf 1 0 -dup -lstat | tail -n 1 | awk '{print $6}')
-ICV=$(echo "$VVOX * $VOLUME" | /usr/bin/bc -l)
+  # Get T1 voxel volume
+  VVOX=$(voxel_size $TMPDIR/icv.nii.gz)
 
-# Write the volume information to output file
-echo $SUBJID $ICV > $WSTAT/${SUBJID}_icv.txt
+  # Get ICV
+  VOLUME=$(c3d $TMPDIR/icv.nii.gz -thresh 0.5 inf 1 0 -dup -lstat | tail -n 1 | awk '{print $6}')
+  ICV=$(echo "$VVOX * $VOLUME" | awk '{print $1*$2}')
+
+  # Write the volume information to output file
+  echo $SUBJID $ICV > $WSTAT/${SUBJID}_icv.txt
+
+fi

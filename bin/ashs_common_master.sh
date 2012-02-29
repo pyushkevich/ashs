@@ -30,7 +30,3 @@ if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
   echo "Data files appear to be missing. Can't locate $ASHS_ROOT/data/train/train21/tse_native.nii.gz"
   exit -1
 fi
-
-# Make the dump directory
-mkdir -p $WORK/dump
-
