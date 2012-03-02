@@ -149,20 +149,19 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     ComputeOffsetTable(m_Atlases[i], m_SearchRadius, offSearchAtlas+i, nSearch, &manhattan);
     }
 
-  // Allocate posterior images for the different labels
-  typedef itk::Image<float, InputImageDimension> PosteriorImage;
-  typedef typename PosteriorImage::Pointer PosteriorImagePtr;
-  std::map<InputImagePixelType, PosteriorImagePtr> posteriorMap;
+  // Initialize the posterior maps
+  m_PosteriorMap.clear();
 
+  // Allocate posterior images for the different labels
   for(typename std::set<InputImagePixelType>::iterator sit = labelset.begin();
     sit != labelset.end(); ++sit)
     {
-    posteriorMap[*sit] = PosteriorImage::New();
-    posteriorMap[*sit]->SetLargestPossibleRegion(target->GetLargestPossibleRegion());
-    posteriorMap[*sit]->SetRequestedRegion(this->GetOutput()->GetRequestedRegion());
-    posteriorMap[*sit]->SetBufferedRegion(this->GetOutput()->GetRequestedRegion());
-    posteriorMap[*sit]->Allocate();
-    posteriorMap[*sit]->FillBuffer(0.0f);
+    m_PosteriorMap[*sit] = PosteriorImage::New();
+    m_PosteriorMap[*sit]->SetLargestPossibleRegion(target->GetLargestPossibleRegion());
+    m_PosteriorMap[*sit]->SetRequestedRegion(this->GetOutput()->GetRequestedRegion());
+    m_PosteriorMap[*sit]->SetBufferedRegion(this->GetOutput()->GetRequestedRegion());
+    m_PosteriorMap[*sit]->Allocate();
+    m_PosteriorMap[*sit]->FillBuffer(0.0f);
     }
 
   int iter = 0;
@@ -427,7 +426,7 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
           InputImagePixelType label = *(patchSeg[i] + offPatchSeg[i][ni]);
 
           // Add that weight the posterior map for voxel at idx
-          posteriorMap[label]->SetPixel(idx, posteriorMap[label]->GetPixel(idx) + W[i]);
+          m_PosteriorMap[label]->SetPixel(idx, m_PosteriorMap[label]->GetPixel(idx) + W[i]);
           }
         }
       }
@@ -451,7 +450,7 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     for(typename std::set<InputImagePixelType>::iterator sit = labelset.begin();
       sit != labelset.end(); ++sit)
       {
-      double posterior = posteriorMap[*sit]->GetPixel(it.GetIndex());
+      double posterior = m_PosteriorMap[*sit]->GetPixel(it.GetIndex());
 
       // check if the label is excluded
       typename ExclusionMap::iterator xit = m_Exclusions.find(*sit);
@@ -467,6 +466,10 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
 
     it.Set(winner);
     }
+
+  // Clear posterior maps
+  if(!m_RetainPosteriorMaps)
+    m_PosteriorMap.clear();
 }
 
 

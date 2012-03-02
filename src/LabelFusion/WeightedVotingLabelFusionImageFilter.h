@@ -73,6 +73,26 @@ public:
   /** Set the requested region */
   void GenerateInputRequestedRegion();
 
+  /** 
+   * Whether the posterior maps should be retained. This can have a negative effect
+   * on memory use, so it should only be done if one wishes to save the posterior
+   * maps. The posterior maps given the probability of each voxel in the target image
+   * belonging to each label.
+   */
+  itkSetMacro(RetainPosteriorMaps, bool)
+  itkGetMacro(RetainPosteriorMaps, bool)
+
+  typedef itk::Image<float, InputImageDimension> PosteriorImage;
+  typedef typename PosteriorImage::Pointer PosteriorImagePtr;
+  typedef typename std::map<InputImagePixelType, PosteriorImagePtr> PosteriorMap;
+                                                                    
+  /**
+   * Get the posterior maps (if they have been retained)
+   */
+  const PosteriorMap &GetPosteriorMaps()
+    { return m_PosteriorMap; }
+
+
 
   void GenerateData();
  
@@ -82,6 +102,7 @@ protected:
     { 
     m_Alpha=0.01; 
     m_Beta=2; 
+    m_RetainPosteriorMaps = false;
     }
   ~WeightedVotingLabelFusionImageFilter() {}
 
@@ -110,6 +131,12 @@ private:
 
   typedef std::vector<InputImagePointer> InputImageList;
   typedef std::map<InputImagePixelType, InputImagePointer> ExclusionMap;
+
+  // Posterior maps
+  PosteriorMap m_PosteriorMap;
+
+  // Whether they are retained
+  bool m_RetainPosteriorMaps;
 
   // Organized lists of inputs
   InputImagePointer m_Target;

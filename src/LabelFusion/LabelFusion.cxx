@@ -32,6 +32,10 @@ int usage()
   cout << "  -x label image.nii              Specify an exclusion region for the given label. " << endl;
   cout << "                                  If a voxel has non-zero value in an exclusion image," << endl;
   cout << "                                  the corresponding label is not allowed at that voxel." << endl;
+  cout << "  -p filenamePattern              Save the posterior voting maps (probability that each " << endl;
+  cout << "                                  voxel belongs to each label) as images. The number of " << endl;
+  cout << "                                  images saved equals the number of labels. The filename" << endl;
+  cout << "                                  pattern must be in C printf format, e.g. posterior%04d.nii.gz" << endl; 
   cout << "Parameters for -m Gauss option:" << endl;
   cout << "  sigma                           Standard deviation of Gaussian" << endl;
   cout << "                                  Default: X.XX" << endl;
@@ -56,6 +60,7 @@ struct LFParam
   vector<string> fnLabel;
   string fnTarget;
   string fnOutput;
+  string fnPosterior;
   LFMethod method;
 
   map<int, string> fnExclusion;
@@ -100,6 +105,8 @@ struct LFParam
       }
     oss << "Search Radius: " << r_search << endl;
     oss << "Patch Radius: " << r_patch << endl;
+    if(fnPosterior.size())
+      oss << "Posterior Filename Pattern: " << fnPosterior << endl;
     }
 };
 
@@ -186,6 +193,11 @@ int lfapp(int argc, char *argv[])
         p.fnLabel.push_back(argv[++j]);
       }
 
+    else if(arg == "-p")
+      {
+      p.fnPosterior = argv[++j];
+      }
+
     else if(arg == "-x")
       {
       int label = atoi(argv[++j]);
@@ -260,6 +272,18 @@ int lfapp(int argc, char *argv[])
     return -1;
     }
 
+  // Check the posterior filename pattern
+  if(p.fnPosterior.size())
+    {
+    char buffer[4096];
+    sprintf(buffer, p.fnPosterior.c_str(), 100);
+    if(strcmp(buffer, p.fnPosterior.c_str()) == 0)
+      {
+      cerr << "Invalid filename pattern " << p.fnPosterior << endl;
+      return -1;
+      }
+    }
+
   // Print parametes
   cout << "LABEL FUSION PARAMETERS:" << endl;
   p.Print(cout);
@@ -325,6 +349,10 @@ int lfapp(int argc, char *argv[])
   voter->SetAlpha(p.alpha);
   voter->SetBeta(p.beta);
 
+  // The posterior maps
+  if(p.fnPosterior.size())
+    voter->SetRetainPosteriorMaps(true);
+
   std::cout << "Output Requested Region: " << rMask.GetIndex() << ", " << rMask.GetSize() << " ("
     << rMask.GetNumberOfPixels() << " pixels)" << std::endl;
   /*
@@ -359,6 +387,44 @@ int lfapp(int argc, char *argv[])
   writer->SetInput(target);
   writer->SetFileName(p.fnOutput.c_str());
   writer->Update();
+
+  // Finally, store the posterior maps
+  if(p.fnPosterior.size())
+    {
+    // Get the posterior maps
+    const typename VoterType::PosteriorMap &pm = voter->GetPosteriorMaps();
+
+    // Create a full-size image
+    typename VoterType::PosteriorImagePtr pout = VoterType::PosteriorImage::New();
+    pout->SetRegions(target->GetBufferedRegion());
+    pout->CopyInformation(target);
+    pout->Allocate();
+
+    // Iterate over the labels
+    typename VoterType::PosteriorMap::const_iterator it;
+    for(it = pm.begin(); it != pm.end(); it++)
+      {
+      // Get the filename
+      char buffer[4096];
+      sprintf(buffer, p.fnPosterior.c_str(), (int) it->first);
+
+      // Initialize to zeros
+      pout->FillBuffer(0.0);
+
+      // Replace the portion affected by the filter
+      for(itk::ImageRegionIteratorWithIndex<typename VoterType::PosteriorImage> qt(it->second, rMask);
+        !qt.IsAtEnd(); ++qt)
+        {
+        pout->SetPixel(qt.GetIndex(), qt.Get());
+        }
+
+      // Create writer
+      typename WriterType::Pointer writer = WriterType::New();
+      writer->SetInput(pout);
+      writer->SetFileName(buffer);
+      writer->Update();
+      }
+    }
 
   return 0;
 }
