@@ -106,12 +106,12 @@ done
 
 # Check the listfile
 if [[ ! -f $LISTFILE ]]; then
-  echo "Missing data list file (-L)"
+  echo "Missing data list file (-D)"
   exit 1;
 fi
 
 if [[ ! -f $LABELFILE ]]; then
-  echo "Missing label description file (-D)"
+  echo "Missing label description file (-L)"
   exit -1;
 fi
 

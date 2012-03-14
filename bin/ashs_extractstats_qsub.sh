@@ -85,7 +85,7 @@ if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
   # Get ICV
   VOLUME=$(c3d $TMPDIR/icv.nii.gz -thresh 0.5 inf 1 0 -dup -lstat | tail -n 1 | awk '{print $6}')
-  ICV=$(echo "$VVOX * $VOLUME" | awk '{print $1*$2}')
+  ICV=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
 
   # Write the volume information to output file
   echo $SUBJID $ICV > $WSTAT/${SUBJID}_icv.txt

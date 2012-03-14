@@ -77,6 +77,12 @@ while getopts "g:f:w:s:a:q:I:C:NTdhV" opt; do
   esac
 done
 
+# Convert the work directory to absolute path
+WORK=$(cd $WORK; pwd)
+if [[ ! -d $WORK ]]; then 
+  echo "Work directory $WORK does not exist";
+fi
+
 # Check the atlas location
 if [[ -f $ATLAS/ashs_atlas_vars.sh ]]; then
   ASHS_ATLAS=$ATLAS;
@@ -125,7 +131,7 @@ source $ASHS_CONFIG
 # Run the stages of the script
 ROOT=$ASHS_ROOT; 
 export ROOT PATH WORK SKIP_ANTS SKIP_RIGID SUBJID BIN_ANTS BIN_FSL ASHS_CONFIG ASHS_ATLAS
-export ASHS_HEURISTICS ASHS_TIDY
+export ASHS_HEURISTICS ASHS_TIDY MPRAGE TSE
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
