@@ -78,6 +78,7 @@ while getopts "g:f:w:s:a:q:I:C:NTdhV" opt; do
 done
 
 # Convert the work directory to absolute path
+mkdir -p $WORK
 WORK=$(cd $WORK; pwd)
 if [[ ! -d $WORK ]]; then 
   echo "Work directory $WORK does not exist";
