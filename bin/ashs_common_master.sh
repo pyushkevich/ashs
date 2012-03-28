@@ -24,9 +24,3 @@ fi
 # version of ants or c3d. This is nicer than having to prefix every call to
 # c3d by the path. 
 PATH=$ASHS_BIN:$ASHS_ANTS:$ASHS_FSL:$PATH
-
-# Check that the data directory exists
-if [[ ! -f $ASHS_ROOT/data/train/train21/tse_native.nii.gz ]]; then
-  echo "Data files appear to be missing. Can't locate $ASHS_ROOT/data/train/train21/tse_native.nii.gz"
-  exit -1
-fi
