@@ -22,6 +22,7 @@ mkdir -p $WANT $WFSL
 
 # Set some variables
 TEMP_T1_FULL=$ASHS_ATLAS/template/template.nii.gz
+TEMP_T1_MASK=$ASHS_ATLAS/template/template_bet_mask.nii.gz
 
 # Copy the images into the working directory
 if [[ $MPRAGE -nt $WORK/mprage.nii.gz ]]; then
@@ -91,7 +92,7 @@ if [[ $SKIP_ANTS \
 else
 
     ANTS 3 -m PR[$TEMP_T1_FULL,$WORK/mprage.nii.gz,1,4] \
-      -x $ROOT/data/template/template_bet_mask.nii.gz \
+      -x $TEMP_T1_MASK \
       -o $WANT/ants_t1_to_temp.nii \
       -a $WAFF/t1_to_template_ITK.txt \
       -i ${ASHS_TEMPLATE_ANTS_ITER} -v | tee $WANT/ants_output.txt
