@@ -3,7 +3,7 @@
 #######################################################################
 #
 #  Program:   ASHS (Automatic Segmentation of Hippocampal Subfields)
-#  Module:    $Id: $
+#  Module:    $Id$
 #  Language:  BASH Shell Script
 #  Copyright (c) 2012 Paul A. Yushkevich, University of Pennsylvania
 #  
