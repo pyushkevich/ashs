@@ -1,23 +1,26 @@
-/**
-  PROGRAM:    MultiLabelAffine.cxx
-  AUTHOR:     Paul A. Yushkevich, University of Pennsylvania
-  LICENSE:    GNU GPL
+/*===================================================================
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+  Program:   ASHS (Automatic Segmentation of Hippocampal Subfields)
+  Module:    $Id$
+  Language:  C++ program
+  Copyright (c) 2012 Paul A. Yushkevich, University of Pennsylvania
+  
+  This file is part of ASHS
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  ASHS is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details. 
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-  COPYRIGHT   2012 Paul A. Yushkevich
-
+  =================================================================== 
+  
   CITATION:
 
     This program implements the method decribed in the paper
@@ -29,7 +32,8 @@
 
     I peeked at Xenios's (XP) BioImageSuite when writing this code, but mostly
     this code is based off my MATLAB implementation of XP's paper.
-*/
+
+  =================================================================== */
 
 #include <itkImageFileReader.h>
 #include <itkImage.h>
