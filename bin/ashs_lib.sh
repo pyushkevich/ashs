@@ -36,6 +36,59 @@ fi
 # Read the config file
 source ${ASHS_CONFIG?}
 
+# Determine the TMDDIR parameter for the child scripts
+function get_tmpdir()
+{
+  # If TMPDIR is already set (i.e., ashs_main is run from qsub)
+  # then this will create a subdirectory in TMPDIR. Otherwise
+  # this will create a subdirectory in /tmp
+  echo $(mktemp -d -t ashs.XXXXXXXX)
+}
+
+# Submit a job to the queue (or just run job) and wait until it finishes
+function qsubmit_sync()
+{
+  if [[ $ASHS_USE_QSUB ]]; then
+    qsub $QOPTS -sync y -j y -o $WORK/dump -cwd -V -N $1 $2 $3 $4 $5 $6 $7 $8 $9
+  else
+    local PARENTTMPDIR=$TMPDIR
+    TMPDIR=$(get_tmpdir)
+    export TMPDIR
+
+    bash $2 $3 $4 $5 $6 $7 $8 $9 2>&1 | tee $WORK/dump/${1}.o$(date +%Y%m%d_%H%M%S)
+
+    rm -rf $TMPDIR
+    TMPDIR=$PARENTTMPDIR
+  fi
+}
+
+# Submit an array of jobs to the queue
+function qsubmit_array()
+{
+  local NAME=$1
+  local SIZE=$2
+  local CMD="$3 $4 $5 $6 $7 $8 $9"
+
+  if [[ $ASHS_USE_QSUB ]]; then
+    qsub $QOPTS -t 1-${SIZE} -sync y -j y -o $WORK/dump -cwd -V -N $NAME $CMD
+  else
+    for ((i=1; i<=$SIZE;i++)); do
+
+      local PARENTTMPDIR=$TMPDIR
+      TMPDIR=$(get_tmpdir)
+      export TMPDIR
+
+      local SGE_TASK_ID=$i
+      export SGE_TASK_ID
+
+      bash $CMD 2>&1 | tee $WORK/dump/${NAME}.o$(date +%Y%m%d_%H%M%S)
+
+      rm -rf $TMPDIR
+      TMPDIR=$PARENTTMPDIR
+    done
+  fi
+}
+
 # Wait for qsub to finish
 function qwait() 
 {

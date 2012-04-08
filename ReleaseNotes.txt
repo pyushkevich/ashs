@@ -1,0 +1,53 @@
+######################################################
+ASHS (Automatic Segmentation of Hippocampal Subfields)
+Release Notes
+######################################################
+
+=========================
+Revision 80, April 2012
+=========================
+
+New in this Revision:
+---------------------
+
+* You no longer need SGE to run ashs_main. There are three ways to run ASHS. You
+  can just run it in a single process, which is really slow. You can run a lot
+  of ashs_main scripts, each in a separate process, by using SGE. Or you can let
+  ASHS launch sub-jobs using SGE. This was the behaviour in the older revisions.
+  For the latter option, you will need to use the -q or -Q options.
+
+* The training component (ashs_train) still requires SGE and uses it to launch 
+  sub-jobs. 
+
+
+=========================
+Revision 76, April 2012
+=========================
+
+New in this Revision:
+---------------------
+
+* ASHS includes a training component. Given a set of images with corresponding 
+  segmentations, you can use it to create your own atlas set. See ashs_train.sh
+
+* ASHS no longer requires manual 'slice markings'. Instead, if your protocol is
+  limited to specific slices, ASHS can be informed of this with the help of a 
+  heuristic rules file. The rule file can be used to specify that a certain
+  label excludes another label, or that a certain label spans a specific range
+  of slices relative to the other labels. The heuristics are specified when 
+  building an atlas.
+
+* ASHS is no longer tied to a specific segmentation protocol. Each atlas set can
+  use its own segmentation protocol.
+
+* Most ASHS parameters can now be set by user by specifying a config file.
+
+* ASHS includes a bootstrap mode, where segmentations obtained after the 
+  standard procedure are used to rerun the registrations between atlases
+  and the target image. Currently, only one iteration of bootstrap is run.
+  Bootstrap is not yet incorporated into the leave-one-out validation in
+  ashs_train. 
+
+* ASHS will now try both FLIRT and ANTS for T1-template rigid registration. It 
+  will use the transformation that gives the best metric.
+
