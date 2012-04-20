@@ -27,7 +27,7 @@
 set -x -e
 
 # Library
-source $ROOT/bin/ashs_lib.sh
+source $ASHS_ROOT/bin/ashs_lib.sh
 
 # Determine training case and side based on the TASK ID
 SIDES=(left right)
@@ -37,8 +37,8 @@ tid=$(printf %03d $(((SGE_TASK_ID - 1)/ 2)))
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_multiatlas_qsub.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
 	Subjob ID: ${SGE_TASK_ID}
 	Side: ${side?}
@@ -46,21 +46,21 @@ cat <<-BLOCK1
 BLOCK1
 
 # Existing directory structure
-WFSL=$WORK/flirt_t2_to_t1
-WANT=$WORK/ants_t1_to_temp
+WFSL=$ASHS_WORK/flirt_t2_to_t1
+WANT=$ASHS_WORK/ants_t1_to_temp
 
 # Training directory and training data
 TDIR=$ASHS_ATLAS/train/train${tid}
 TSEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
 
 # Create directory for this registration
-WREG=$WORK/bootstrap/tseg_${side}_train${tid}
+WREG=$ASHS_WORK/bootstrap/tseg_${side}_train${tid}
 mkdir -p $WREG
 
 # TODO: organize this better!!!
 
 # Get the fusion directory
-FDIR=$WORK/multiatlas/fusion
+FDIR=$ASHS_WORK/multiatlas/fusion
 
 # Perform fit atlas segmentation to the MALF segmentation
 
@@ -87,7 +87,7 @@ mesh2img -vtk $TMPDIR/mymeshhw.vtk -f -a $RES 5 $WREG/refspace.nii.gz
 
 # Warp both images into reference space
 c3d $WREG/refspace.nii.gz $TDIR/tse.nii.gz -reslice-matrix $WREG/sqrt_fwd.mat -o $TMPDIR/moving_hw.nii.gz
-c3d $WREG/refspace.nii.gz $WORK/tse.nii.gz -reslice-matrix $WREG/sqrt_inv.mat -o $TMPDIR/fixed_hw.nii.gz
+c3d $WREG/refspace.nii.gz $ASHS_WORK/tse.nii.gz -reslice-matrix $WREG/sqrt_inv.mat -o $TMPDIR/fixed_hw.nii.gz
 
 # Create mask in reference space
 c3d $WREG/refspace.nii.gz  $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 \
@@ -102,11 +102,11 @@ ANTS 3 \
 	-i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v \
 	--continue-affine false
 
-# Warp the moving TSE image into the space of the native TSE image using one interpolation.
+# Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
 # Since we only care about the region around the segmentation, we use tse_native_chunk
 WarpImageMultiTransform 3 $TDIR/tse.nii.gz \
 	$WREG/atlas_to_native.nii.gz \
-	-R $WORK/tse_native_chunk_${side}.nii.gz \
+	-R $ASHS_WORK/tse_native_chunk_${side}.nii.gz \
 	-i $WREG/sqrt_inv_itk.txt \
 	$WREG/antsregWarp.nii.gz \
 	$WREG/sqrt_fwd_itk.txt
@@ -123,7 +123,7 @@ for ((i=0; i < ${#LSET[*]}; i++)); do
 
 	WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
 		$TMPDIR/label_${LID}_warp.nii.gz \
-		-R $WORK/tse_native_chunk_${side}.nii.gz \
+		-R $ASHS_WORK/tse_native_chunk_${side}.nii.gz \
 		-i $WREG/sqrt_inv_itk.txt \
 		$WREG/antsregWarp.nii.gz \
 		$WREG/sqrt_fwd_itk.txt

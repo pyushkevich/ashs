@@ -27,7 +27,7 @@
 # Common code executed at startup of all 'master' scripts, i.e., ashs_main,
 # ashs_train
 
-# The ROOT variable must be set
+# The ASHS_ROOT variable must be set
 if [[ ! $ASHS_ROOT ]]; then
   echo "ASHS_ROOT is not set. Please set this variable to point to the root ASHS directory"
   exit -1;

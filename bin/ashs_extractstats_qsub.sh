@@ -29,10 +29,10 @@ set -x -e
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_extractstats_qsub.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
-  SUBJECT: ${SUBJID?}
+  SUBJECT: ${ASHS_SUBJID?}
 BLOCK1
 
 function voxel_size()
@@ -41,7 +41,7 @@ function voxel_size()
 }
 
 # directory for the subfields (separate for different parameter values)
-WSTAT=$WORK/final
+WSTAT=$ASHS_WORK/final
 mkdir -p $WSTAT
 
 # Generate a list of subfield indices and names. This awk command skips comment lines,
@@ -58,14 +58,14 @@ LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
 for segtype in corr heur; do
   for side in left right; do
 
-    SBC=$WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
+    SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
     if [[ -f $SBC ]]; then
 
       # Get voxel volume
       VVOX=$(voxel_size $SBC)
 
       # Create an output file
-      FNBODYVOL=$WSTAT/${SUBJID}_${side}_${segtype}_volumes.txt 
+      FNBODYVOL=$WSTAT/${ASHS_SUBJID}_${side}_${segtype}_volumes.txt 
       rm -rf $FNBODYVOL
 
       # Dump volumes into that file
@@ -87,7 +87,7 @@ for segtype in corr heur; do
         VSUB=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
 
         # Write the volume information to output file
-        echo $SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
+        echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
 
       done
 
@@ -100,9 +100,9 @@ if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
   # Warp the BET mask
   WarpImageMultiTransform 3 $ASHS_ATLAS/template/template_bet_mask.nii.gz \
-    $TMPDIR/icv.nii.gz -R $WORK/mprage.nii.gz \
-    -i $WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-    $WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
+    $TMPDIR/icv.nii.gz -R $ASHS_WORK/mprage.nii.gz \
+    -i $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+    $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
 
   # Get T1 voxel volume
   VVOX=$(voxel_size $TMPDIR/icv.nii.gz)
@@ -112,6 +112,6 @@ if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
   ICV=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
 
   # Write the volume information to output file
-  echo $SUBJID $ICV > $WSTAT/${SUBJID}_icv.txt
+  echo $ASHS_SUBJID $ICV > $WSTAT/${ASHS_SUBJID}_icv.txt
 
 fi

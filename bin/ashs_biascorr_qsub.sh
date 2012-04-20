@@ -38,14 +38,14 @@ fi
 
 # If no slice labeling, use automatic result
 if [[ ! -f $SL ]]; then
-  SL=$WORK/subfields/consensus_wgtavg_${side}_native.nii.gz
+  SL=$ASHS_WORK/subfields/consensus_wgtavg_${side}_native.nii.gz
 fi
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_biascorr_qsub.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	Subjob ID: ${SGE_TASK_ID}
 	Side: ${side?}
 	Slice Labeling: ${SL}
@@ -53,7 +53,7 @@ cat <<-BLOCK1
 BLOCK1
 
 # directory for the subfields (separate for different parameter values)
-WSUB=$WORK/subfields
+WSUB=$ASHS_WORK/subfields
 
 # Quit if slice labeling does not exist
 if [[ ! -f $WSUB/consensus_heuristic_wgtavg_${side}_native.nii.gz ]]; then
@@ -62,13 +62,13 @@ if [[ ! -f $WSUB/consensus_heuristic_wgtavg_${side}_native.nii.gz ]]; then
 fi
 
 # Call Hongzhi's BC code
-$BIN/bc $WORK/tse.nii.gz $WSUB/consensus_heuristic_wgtavg_${side}_native.nii.gz \
-  $sid $ROOT/data/adaboost $WSUB/bcfh_wgtavg_${side}_native.nii.gz
+bc $ASHS_WORK/tse.nii.gz $WSUB/consensus_heuristic_wgtavg_${side}_native.nii.gz \
+  $sid $ASHS_ROOT/data/adaboost $WSUB/bcfh_wgtavg_${side}_native.nii.gz
 
 # Now apply subfield remapping (maintain heuristics)
-$BIN/subfield_leveler $SL $WSUB/bcfh_wgtavg_${side}_native.nii.gz $WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz
+subfield_leveler $SL $WSUB/bcfh_wgtavg_${side}_native.nii.gz $WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz
 
 # Copy files into the 'final' directory
-$BIN/c3d $WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz -type ushort \
-  -o $WORK/final/${SUBJID}_${side}_subfields_final.nii.gz
+c3d $WSUB/bcfh_heuristic_wgtavg_${side}_native.nii.gz -type ushort \
+  -o $ASHS_WORK/final/${ASHS_SUBJID}_${side}_subfields_final.nii.gz
 

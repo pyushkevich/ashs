@@ -26,15 +26,20 @@
 
 set -x -e
 
+# Read parameters
+id=${1?}
+tid=${2?}
+side=${3?}
+
 source ashs_lib.sh
 
-cd $WORK/atlas/$id
+cd $ASHS_WORK/atlas/$id
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_atlas_pairwise.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
 	Subject: ${id?}
 	Side: ${side?}
@@ -46,7 +51,7 @@ WFSL=flirt_t2_to_t1
 WANT=ants_t1_to_temp
 
 # Training directory and training data
-TDIR=$WORK/atlas/${tid}
+TDIR=$ASHS_WORK/atlas/${tid}
 TSEG=$TDIR/seg_${side}.nii.gz
 
 # Create directory for this registration
@@ -54,10 +59,10 @@ WREG=tseg_${side}_train${tid}
 mkdir -p $WREG
 
 # Run ANTS with current image as fixed, training image as moving
-ashs_atlas_pairwise 1
+ashs_ants_pairwise 1
 
 <<'TRASH'
-# Warp the moving TSE image into the space of the native TSE image using one interpolation.
+# Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
 # Since we only care about the region around the segmentation, we use tse_native_chunk
 WarpImageMultiTransform 3 $TDIR/tse.nii.gz \
   $WREG/atlas_to_native.nii.gz \
@@ -120,21 +125,21 @@ for((LAB=0;LAB<=10;LAB++)); do
 
 	SFID=$(printf "sf%02i" $LAB)
 
-	$BIN/c3d $TSEG -thresh $LAB $LAB 1 0 -smooth 0.24mm -o $WREG/sf/${SFID}_src.nii.gz
+	c3d $TSEG -thresh $LAB $LAB 1 0 -smooth 0.24mm -o $WREG/sf/${SFID}_src.nii.gz
 
 	# TODO: replace training full-warps with already combined warps residing in template space
-	$BIN_ANTS/WarpImageMultiTransform 3 $WREG/sf/${SFID}_src.nii.gz \
-    $WREG/sf/${SFID}_to_native.nii.gz -R $WORK/tse.nii.gz \
-		-i $WORK/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
-		-i $WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-		$WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii \
+	$WarpImageMultiTransform 3 $WREG/sf/${SFID}_src.nii.gz \
+    $WREG/sf/${SFID}_to_native.nii.gz -R $ASHS_WORK/tse.nii.gz \
+		-i $ASHS_WORK/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
+		-i $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+		$ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii \
 		$WREG/antsregWarp.nii.gz \
 		$TDIR/ants_t1_to_tempWarp.nii.gz \
 		$TDIR/ants_t1_to_tempAffine.txt \
 		$TDIR/flirt_t2_to_t1_ITK.txt
 
-	$BIN_ANTS/WarpImageMultiTransform 3 $WREG/sf/${SFID}_src.nii.gz \
-		$WREG/sf/${SFID}_to_chunk.nii.gz -R $WORK/tse_to_chunktemp_${side}.nii.gz \
+	$WarpImageMultiTransform 3 $WREG/sf/${SFID}_src.nii.gz \
+		$WREG/sf/${SFID}_to_chunk.nii.gz -R $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz \
 		$WREG/antsregWarp.nii.gz \
 		$TDIR/ants_t1_to_tempWarp.nii.gz \
 		$TDIR/ants_t1_to_tempAffine.txt \
@@ -142,8 +147,8 @@ for((LAB=0;LAB<=10;LAB++)); do
 
 done
 
-$BIN/c3d $WORK/tse_to_chunktemp_${side}.nii.gz $WREG/tse_reslice_to_chunk_oneinterp.nii.gz \
-	-ncc 4x4x4 $WORK/tse_to_chunktemp_${side}_regmask.nii.gz -times \
+c3d $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz $WREG/tse_reslice_to_chunk_oneinterp.nii.gz \
+	-ncc 4x4x4 $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz -times \
 	-o $WREG/tse_nccmap.nii.gz
 
 SKIP

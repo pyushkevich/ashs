@@ -26,14 +26,21 @@
 
 set -x -e
 
+# Read parameters
+id=${1?}
+TRAIN=${2?}
+FNOUT=${3?}
+side=${4?}
+
+
 source ashs_lib.sh
 
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_atlas_pairwise.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
 	Subject: ${id?}
   Train Set: ${TRAIN?}

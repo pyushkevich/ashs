@@ -32,14 +32,14 @@ source ashs_lib.sh
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_atlas_initdir_qsub.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
 BLOCK1
 
 # Create the working directory for this ID
 id=${1?}
-MYWORK=$WORK/atlas/$id
+MYWORK=$ASHS_WORK/atlas/$id
 WFSL=$MYWORK/flirt_t2_to_t1
 mkdir -p $MYWORK $WFSL
 

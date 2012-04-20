@@ -34,10 +34,10 @@
 # copy to the ashs_main or ashs_train scripts using the -C flag. 
 
 # ---------------------------------
-# TSE resolution-related parameters
+# ASHS_TSE resolution-related parameters
 # ---------------------------------
 #
-# The default parameters are configured for TSE images with 0.4 x 0.4 x 2.0
+# The default parameters are configured for ASHS_TSE images with 0.4 x 0.4 x 2.0
 # voxel resolution, with a field of view that extends past the skull in the
 # oblique coronal plane. If your data is different, you may want to change 
 # these parameters
@@ -46,13 +46,13 @@
 # exactly isotropic. I suggest keeping all numbers multiples of 100. 
 ASHS_TSE_ISO_FACTOR="100x100x500%"
 
-# The cropping applied to the TSE volume before rigid registration to the T1
-# volume. If the field of view in the TSE images is limited, you may want to
+# The cropping applied to the ASHS_TSE volume before rigid registration to the T1
+# volume. If the field of view in the ASHS_TSE images is limited, you may want to
 # change this. Default crops 20% of the image in the oblique coronal plane
 ASHS_TSE_ISO_REGION_CROP="20x20x0% 60x60x100%"
 
 # ----------------------------------
-# TSE-MPRAGE registration parameters
+# ASHS_TSE-ASHS_MPRAGE registration parameters
 # ----------------------------------
 
 # The search parameters for FLIRT. You may want to play with these if the
@@ -63,13 +63,13 @@ ASHS_FLIRT_MULTIMODAL_OPTS="-searchrx -5 5 -searchry -5 5 -searchrz -5 5 -coarse
 
 
 # ------------------------------------------------
-# MPRAGE template creation/registration parameters
+# ASHS_MPRAGE template creation/registration parameters
 # ------------------------------------------------
 #
 # These parameters affect registration to the template space in ashs_main and
 # template construction in ashs_train
 
-# The number of iterations for ANTS when registering MPRAGE to the template.
+# The number of iterations for ANTS when registering ASHS_MPRAGE to the template.
 # This is one of the main parameters affecting the runtime of the program,
 # since this is the only whole-brain registration performed by ASHS. See ANTS
 # documentation for the meaning of this.
@@ -86,7 +86,7 @@ ASHS_TEMPLATE_ROI_MARGIN="4x4x4vox"
 
 # The target resolution of the template (only when building a template with
 # ashs_train). This is specified in units of mm. The target resolulion should
-# roughly match the in-plane resolution of the TSE data, but there is no hard
+# roughly match the in-plane resolution of the ASHS_TSE data, but there is no hard
 # rule for this. Setting it too high will slow everything down.
 ASHS_TEMPLATE_TARGET_RESOLUTION="0.4688x0.4688x0.4688mm"
 
@@ -117,7 +117,7 @@ ASHS_PAIRWISE_ANTS_ITER="60x60x20"
 ASHS_PAIRWISE_ANTS_STEPSIZE="0.25"
 
 # The relative weight given to the T1 image in the pairwise registration
-# Setting this to 0 makes the registration only use the TSE images, which
+# Setting this to 0 makes the registration only use the ASHS_TSE images, which
 # may be the best option. This has not been tested extensively. Should be 
 # a floating point number between 0 and 1
 ASHS_PAIRWISE_ANTS_T1_WEIGHT=0

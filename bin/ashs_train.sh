@@ -72,8 +72,8 @@ function usage()
       comments (lines that start with a # character). 
       
     data requirements:
-      The TSE image slice direction should be z. In other words, the dimension
-      of TSE image should be 400x400x30 or something like that, not 400x30x400
+      The ASHS_TSE image slice direction should be z. In other words, the dimension
+      of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
 
     cross-validation file (-x option):
       This file specifies what kind of a cross-validation experiment to perform to test the
@@ -97,9 +97,6 @@ ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
 # Load the library
 source $ASHS_ROOT/bin/ashs_lib.sh
 
-# Common code
-source ashs_common_master.sh
-
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
@@ -111,14 +108,14 @@ while getopts "C:D:L:w:s:x:q:r:NdhV" opt; do
   case $opt in
 
     D) LISTFILE=$OPTARG;;
-    L) LABELFILE=$OPTARG;;
-    w) WORK=$OPTARG;;
+    L) ASHS_LABELFILE=$OPTARG;;
+    w) ASHS_WORK=$OPTARG;;
 		s) STAGE_SPEC=$OPTARG;;
-		N) SKIP_ANTS=1; SKIP_RIGID=1; ;;
+		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
     q) QOPTS=$OPTARG;;
     C) ASHS_CONFIG=$OPTARG;;
     r) ASHS_HEURISTICS=$(readlink -f $OPTARG);;
-    x) XVAL=$OPTARG;;
+    x) ASHS_XVAL=$OPTARG;;
     d) set -x -e;;
     h) usage; exit 0;;
     V) vers; exit 0;;
@@ -134,7 +131,7 @@ if [[ ! -f $LISTFILE ]]; then
   exit 1;
 fi
 
-if [[ ! -f $LABELFILE ]]; then
+if [[ ! -f $ASHS_LABELFILE ]]; then
   echo "Missing label description file (-L)"
   exit -1;
 fi
@@ -172,12 +169,11 @@ if [[ $ASHS_HEURISTICS ]]; then
 fi
  
 # Create the working directory and the dump directory
-mkdir -p $WORK $WORK/dump $WORK/final
+mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 
 # Run the stages of the script
-ROOT=$ASHS_ROOT;
-export ROOT PATH ASHS_BIN WORK SKIP_ANTS SKIP_RIGID ASHS_BIN_ANTS 
-export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS XVAL LABELFILE
+export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS 
+export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then

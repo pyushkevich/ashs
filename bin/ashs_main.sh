@@ -38,8 +38,8 @@ function usage()
 		required options:
 		  -a dir            Location of the atlas directory. Can be a full pathname or a
 		                    relative directory name under ASHS_ROOT/data directory. 
-		  -g image          Filename of 3D (g)radient echo MRI (MPRAGE, T1w)
-		  -f image          Filename of 2D focal (f)ast spin echo MRI (TSE, T2w)
+		  -g image          Filename of 3D (g)radient echo MRI (ASHS_MPRAGE, T1w)
+		  -f image          Filename of 2D focal (f)ast spin echo MRI (ASHS_TSE, T2w)
 		  -w path           Working/output directory
 
 		optional:
@@ -70,8 +70,8 @@ function usage()
 		  7:                volumes and statistics
 
 		notes:
-		  The TSE image slice direction should be z. In other words, the dimension
-		  of TSE image should be 400x400x30 or something like that, not 400x30x400
+		  The ASHS_TSE image slice direction should be z. In other words, the dimension
+		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
 	USAGETEXT
 }
 
@@ -95,13 +95,13 @@ while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
   case $opt in
 
     a) ATLAS=$OPTARG;;
-    g) MPRAGE=$OPTARG;;
-    f) TSE=$OPTARG;;
-    w) WORK=$OPTARG;;
+    g) ASHS_MPRAGE=$OPTARG;;
+    f) ASHS_TSE=$OPTARG;;
+    w) ASHS_WORK=$OPTARG;;
 		s) STAGE_SPEC=$OPTARG;;
-		N) SKIP_ANTS=1; SKIP_RIGID=1; ;;
+		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
 		T) ASHS_TIDY=1;;
-    I) SUBJID=$OPTARG;;
+    I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
     q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
     C) ASHS_CONFIG=$OPTARG;;
@@ -116,9 +116,9 @@ done
 
 # Check if the required parameters were passed in
 echo "Atlas    : ${ATLAS?    "Directory for atlas was not specified. See $0 -h"}
-echo "T1 Image : ${MPRAGE?   "T1-weighted MRI was not specified. See $0 -h"}
-echo "T2 Image : ${TSE?      "T2-weighted MRI was not specified. See $0 -h"}
-echo "WorkDir  : ${WORK?     "Working directory was not specified. See $0 -h"}
+echo "T1 Image : ${ASHS_MPRAGE?   "T1-weighted MRI was not specified. See $0 -h"}
+echo "T2 Image : ${ASHS_TSE?      "T2-weighted MRI was not specified. See $0 -h"}
+echo "WorkDir  : ${ASHS_WORK?     "Working directory was not specified. See $0 -h"}
 
 # Whether we are using QSUB
 if [[ $ASHS_USE_QSUB ]]; then
@@ -132,10 +132,10 @@ else
 fi
 
 # Convert the work directory to absolute path
-mkdir -p ${WORK?}
-WORK=$(cd $WORK; pwd)
-if [[ ! -d $WORK ]]; then 
-  echo "Work directory $WORK does not exist";
+mkdir -p ${ASHS_WORK?}
+ASHS_WORK=$(cd $ASHS_WORK; pwd)
+if [[ ! -d $ASHS_WORK ]]; then 
+  echo "Work directory $ASHS_WORK does not exist";
 fi
 
 # Check the atlas location
@@ -154,39 +154,38 @@ if [[ -f $ASHS_ATLAS/ashs_heuristics.txt ]]; then
 fi
 
 # Make sure all files exist
-if [[ ! $MPRAGE || ! -f $MPRAGE ]]; then
+if [[ ! $ASHS_MPRAGE || ! -f $ASHS_MPRAGE ]]; then
 	echo "T1-weighted 3D gradient echo MRI (-g) must be specified"
 	exit 2;
-elif [[ ! $TSE || ! -f $TSE ]]; then
+elif [[ ! $ASHS_TSE || ! -f $ASHS_TSE ]]; then
 	echo "T2-weighted 2D fast spin echo MRI (-f) must be specified"
 	exit 2;
-elif [[ ! $WORK ]]; then
+elif [[ ! $ASHS_WORK ]]; then
 	echo "Working/output directory must be specified"
 	exit 2;
 fi
 
 # Check that the dimensions of the T2 image are right
-DIMS=$(c3d $TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
+DIMS=$(c3d $ASHS_TSE -info | cut -d ';' -f 1 | sed -e "s/.*\[//" -e "s/\].*//" -e "s/,//g")
 if [[ ${DIMS[2]} > ${DIMS[0]} || ${DIMS[2]} > ${DIMS[1]} ]]; then
   echo "The T2-weighted image has wrong dimensions (fails dim[2] < min(dim[0], dim[1])"
   exit -1
 fi
 
 # Subject ID set to work dir last work
-if [[ ! $SUBJID ]]; then
-  SUBJID=$(basename $WORK)
+if [[ ! $ASHS_SUBJID ]]; then
+  ASHS_SUBJID=$(basename $ASHS_WORK)
 fi
 
 # Create the working directory and the dump directory
-mkdir -p $WORK $WORK/dump $WORK/final
+mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 
 # Read the configuration file
 source $ASHS_CONFIG
 
 # Run the stages of the script
-ROOT=$ASHS_ROOT; 
-export ROOT PATH WORK SKIP_ANTS SKIP_RIGID SUBJID BIN_ANTS BIN_FSL ASHS_CONFIG ASHS_ATLAS
-export ASHS_HEURISTICS ASHS_TIDY MPRAGE TSE
+export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
+export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
@@ -213,47 +212,47 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     1) 
     # Template matching
     echo "Running stage 1: normalize to T1 population template"
-    qsubmit_sync "ashs_stg1" $ROOT/bin/ashs_template_qsub.sh ;;
+    qsubmit_sync "ashs_stg1" $ASHS_ROOT/bin/ashs_template_qsub.sh ;;
 
     2) 
     # Multi-atlas matching 
     echo "Running stage 2: normalize to multiple T1/T2 atlases"
-    qsubmit_array "ashs_stg2" $((ASHS_ATLAS_N*2)) $ROOT/bin/ashs_multiatlas_qsub.sh ;;
+    qsubmit_array "ashs_stg2" $((ASHS_ATLAS_N*2)) $ASHS_ROOT/bin/ashs_multiatlas_qsub.sh ;;
 
     3) 
     # Voting
     echo "Running stage 3: Label Fusion"
-    qsubmit_array "ashs_stg3" 2 $ROOT/bin/ashs_voting_qsub.sh 0;;
+    qsubmit_array "ashs_stg3" 2 $ASHS_ROOT/bin/ashs_voting_qsub.sh 0;;
 
 		4)
 		# Bootstrapping
 		echo "Running stage 4: Bootstrap segmentation"
-    qsubmit_array "ashs_stg3" $((ASHS_ATLAS_N*2)) $ROOT/bin/ashs_bootstrap_qsub.sh ;;
+    qsubmit_array "ashs_stg3" $((ASHS_ATLAS_N*2)) $ASHS_ROOT/bin/ashs_bootstrap_qsub.sh ;;
 
 	  5)
 		# Bootstrap voting
 		echo "Running stage 5: Bootstrap label fusion" 
-    qsubmit_array "ashs_stg5" 2 $ROOT/bin/ashs_voting_qsub.sh 1;;
+    qsubmit_array "ashs_stg5" 2 $ASHS_ROOT/bin/ashs_voting_qsub.sh 1;;
 
     6)
     # Final QA
     echo "Running stage 6: Final QA"
-    qsubmit_sync "ashs_stg6" $ROOT/bin/ashs_finalqa_qsub.sh ;;
+    qsubmit_sync "ashs_stg6" $ASHS_ROOT/bin/ashs_finalqa_qsub.sh ;;
   
     7) 
     # Statistics & Volumes
     echo "Running stage 7: Statistics and Volumes"
-    qsubmit_sync "ashs_stg7" $ROOT/bin/ashs_extractstats_qsub.sh ;;
+    qsubmit_sync "ashs_stg7" $ASHS_ROOT/bin/ashs_extractstats_qsub.sh ;;
 
     ### 8) 
     ### Fit cm-rep models
     ### echo "Running stage 8: Thickness analysis"
-    ### qsubmit_array "ashs_stg8" 4 $ROOT/bin/ashs_thickness_qsub.sh ;;
+    ### qsubmit_array "ashs_stg8" 4 $ASHS_ROOT/bin/ashs_thickness_qsub.sh ;;
 
     ## 4)
     ## # Final QA
     ### echo "Running stage 4: Final QA"
-    ### qsub $QOPTS -sync y -j y -o $WORK/dump -cwd -V -N "ashs_stg6" $ROOT/bin/ashs_finalqa_qsub.sh ;;
+    ### qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_stg6" $ASHS_ROOT/bin/ashs_finalqa_qsub.sh ;;
 
   esac  
 

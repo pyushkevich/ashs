@@ -26,36 +26,39 @@
 
 set -x -e
 
+# Read the parameters
+id=${1?}
+
 # Include the common file
 source ashs_lib.sh
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_atlas_resample_to_template.sh
-	Root: ${ROOT?}
-	Working directory: ${WORK?}
+	Root: ${ASHS_ROOT?}
+	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
   Id: ${id?}
 BLOCK1
 
 # Go to my directory
-pushd $WORK/atlas/$id
+pushd $ASHS_WORK/atlas/$id
 
 # Copy the warps from the template building directory to the atlas directory
 mkdir -p ants_t1_to_temp
 for what in Warp.nii.gz InverseWarp.nii.gz Affine.txt; do
-  cp -av $WORK/template_build/atlas${id}_mprage${what} ants_t1_to_temp/ants_t1_to_temp${what}
+  cp -av $ASHS_WORK/template_build/atlas${id}_mprage${what} ants_t1_to_temp/ants_t1_to_temp${what}
 done
 
 # Histogram match the images to a reference image (used later down the road, but better to do it now)
-c3d $WORK/final/ref_hm/ref_tse.nii.gz tse.nii.gz \
+c3d $ASHS_WORK/final/ref_hm/ref_tse.nii.gz tse.nii.gz \
   -histmatch ${ASHS_HISTMATCH_CONTROLS} -o tse_histmatch.nii.gz
 
-c3d $WORK/final/ref_hm/ref_mprage.nii.gz mprage.nii.gz \
+c3d $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz mprage.nii.gz \
   -histmatch ${ASHS_HISTMATCH_CONTROLS} -o mprage_histmatch.nii.gz
 
 # Reslice the atlas to the template
-ashs_reslice_to_template . $WORK/final
+ashs_reslice_to_template . $ASHS_WORK/final
 
 # If heuristics specified, create exclusion maps for the labels
 if [[ $ASHS_HEURISTICS ]]; then
