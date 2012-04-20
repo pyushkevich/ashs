@@ -4,6 +4,19 @@ Release Notes
 ######################################################
 
 =========================
+Revision 81, April 2012
+=========================
+
+New in this Revision:
+---------------------
+
+* Resolved some issues with clashes between PATH and other environment vars
+  and the variables exported by ASHS. All variables exported by ASHS now
+  start with the prefix ASHS_. The PATH is set in each ashs_*_qsub.sh script
+  so that the user's global PATH set in the .bash-profile does not override
+  the ASHS path.
+
+=========================
 Revision 80, April 2012
 =========================
 
