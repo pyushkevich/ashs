@@ -31,63 +31,63 @@ function usage()
 		usage:
 		  ashs_train [options]
 		required options:
-      -D file           Input data file. See below.
-      -L file           Label description file. See below.
+		  -D file           Input data file. See below.
+		  -L file           Label description file. See below.
 		  -w path           Working/output directory
 		optional:
 		  -d                Enable debugging
 		  -h                Print help
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
-      -r file           Apply heuristic rules (see below) to segmentations produced by ASHS.
-      -x file           Outer cross-validation loop specification file (see below)
+		  -r file           Apply heuristic rules (see below) to segmentations produced by ASHS.
+		  -x file           Outer cross-validation loop specification file (see below)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
-                        exists, don't run ANTS/FLIRT again
-      -q string         List of additional options to pass to qsub (Sun Grid Engine)
-      -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
-      -V                Display version information and exit
+		                    exists, don't run ANTS/FLIRT again
+		  -q string         List of additional options to pass to qsub (Sun Grid Engine)
+		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
+		  -V                Display version information and exit
 		stages:
 
-    data file:
-      The datafile is a comma-separated file listing, with rows corresponding to input images
-      For each image, the following columns are included:
-      
-        ID T1_MRI TSE_MRI SEG_LEFT SEG_RIGHT
+		data file:
+		  The datafile is a comma-separated file listing, with rows corresponding to input images
+		  For each image, the following columns are included:
+		  
+		    ID T1_MRI TSE_MRI SEG_LEFT SEG_RIGHT
 
-    label description file:
-      This file is used to define the labels in the segmentation protocol. It is possible to 
-      have the same strugure (e.g., CA1) to have the same label on the left and on the right,
-      or to have then have separate labels. ASHS will handle it either way. The label file is
-      in the ITK-SNAP label format, i.e., a format of the file obtained by running ITK-SNAP
-      and selecting from the menu "Segmentation->Save Label Descriptions". Each line in the file
-      consists of seven numbers separated by whitespace, followed by a string in quotation marks.
-
-          0     0    0    0        0  0  0    "Clear Label"
-          1   255    0    0        1  1  1    "CA1"
-          2     0  255    0        1  1  1    "CA2"
-
-      The entries are: (1) the index of the label; (2-4) the R/G/B components of the color 
-      corresponding to the label (used to generate some figures in ASHS); (5-7) affect the
-      visibility of the label in SNAP; set them to 0 0 0 for the background and 1 1 1 for the
-      foreground labels. The name of the label is in quotation marks. The file can also include
-      comments (lines that start with a # character). 
-      
-    data requirements:
-      The ASHS_TSE image slice direction should be z. In other words, the dimension
-      of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
-
-    cross-validation file (-x option):
-      This file specifies what kind of a cross-validation experiment to perform to test the
-      segmentation performance across the atlases. Each row corresponds to one experiment.
-      Each column lists the IDS of the test subjects for that experiment (i.e., the subjects
-      left out from atlas building). Cross-validation is optional.
-
-    heuristic rules (-r option):
-      Rules can be specified to restrict certain labels in the segmentation to certain slices.
-      This is needed when the underlying segmentation protocol covers a portion of the slices
-      in the hippocampus, and the automatic method needs to be consistent with that protocol.
-      See the Yushkevich et al., 2010 Neuroimage paper for the heuristic rules applied there.
-      The format of the heuristic file can be found in the help for the subfield_slice_rules
-      program.
+		label description file:
+		  This file is used to define the labels in the segmentation protocol. It is possible to 
+		  have the same strugure (e.g., CA1) to have the same label on the left and on the right,
+		  or to have then have separate labels. ASHS will handle it either way. The label file is
+		  in the ITK-SNAP label format, i.e., a format of the file obtained by running ITK-SNAP
+		  and selecting from the menu "Segmentation->Save Label Descriptions". Each line in the file
+		  consists of seven numbers separated by whitespace, followed by a string in quotation marks.
+		
+		      0     0    0    0        0  0  0    "Clear Label"
+		      1   255    0    0        1  1  1    "CA1"
+		      2     0  255    0        1  1  1    "CA2"
+		
+		  The entries are: (1) the index of the label; (2-4) the R/G/B components of the color 
+		  corresponding to the label (used to generate some figures in ASHS); (5-7) affect the
+		  visibility of the label in SNAP; set them to 0 0 0 for the background and 1 1 1 for the
+		  foreground labels. The name of the label is in quotation marks. The file can also include
+		  comments (lines that start with a # character). 
+		  
+		data requirements:
+		  The ASHS_TSE image slice direction should be z. In other words, the dimension
+		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
+		
+		cross-validation file (-x option):
+		  This file specifies what kind of a cross-validation experiment to perform to test the
+		  segmentation performance across the atlases. Each row corresponds to one experiment.
+		  Each column lists the IDS of the test subjects for that experiment (i.e., the subjects
+		  left out from atlas building). Cross-validation is optional.
+		
+		heuristic rules (-r option):
+		  Rules can be specified to restrict certain labels in the segmentation to certain slices.
+		  This is needed when the underlying segmentation protocol covers a portion of the slices
+		  in the hippocampus, and the automatic method needs to be consistent with that protocol.
+		  See the Yushkevich et al., 2010 Neuroimage paper for the heuristic rules applied there.
+		  The format of the heuristic file can be found in the help for the subfield_slice_rules
+		  program.
 	USAGETEXT
 }
 

@@ -1,0 +1,12 @@
+sub01 images/sub01_mprage.nii.gz images/sub01_tse.nii.gz images/sub01_seg_L.nii.gz images/sub01_seg_R.nii.gz
+sub02 images/sub02_mprage.nii.gz images/sub02_tse.nii.gz images/sub02_seg_L.nii.gz images/sub02_seg_R.nii.gz
+sub03 images/sub03_mprage.nii.gz images/sub03_tse.nii.gz images/sub03_seg_L.nii.gz images/sub03_seg_R.nii.gz
+sub04 images/sub04_mprage.nii.gz images/sub04_tse.nii.gz images/sub04_seg_L.nii.gz images/sub04_seg_R.nii.gz
+sub05 images/sub05_mprage.nii.gz images/sub05_tse.nii.gz images/sub05_seg_L.nii.gz images/sub05_seg_R.nii.gz
+sub06 images/sub06_mprage.nii.gz images/sub06_tse.nii.gz images/sub06_seg_L.nii.gz images/sub06_seg_R.nii.gz
+sub07 images/sub07_mprage.nii.gz images/sub07_tse.nii.gz images/sub07_seg_L.nii.gz images/sub07_seg_R.nii.gz
+sub08 images/sub08_mprage.nii.gz images/sub08_tse.nii.gz images/sub08_seg_L.nii.gz images/sub08_seg_R.nii.gz
+sub09 images/sub09_mprage.nii.gz images/sub09_tse.nii.gz images/sub09_seg_L.nii.gz images/sub09_seg_R.nii.gz
+sub10 images/sub10_mprage.nii.gz images/sub10_tse.nii.gz images/sub10_seg_L.nii.gz images/sub10_seg_R.nii.gz
+sub11 images/sub11_mprage.nii.gz images/sub11_tse.nii.gz images/sub11_seg_L.nii.gz images/sub11_seg_R.nii.gz
+sub12 images/sub12_mprage.nii.gz images/sub12_tse.nii.gz images/sub12_seg_L.nii.gz images/sub12_seg_R.nii.gz

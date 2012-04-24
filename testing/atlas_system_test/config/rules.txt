@@ -1,0 +1,16 @@
+# Very simple rules
+#
+# Three classes into which we partition the slices
+CLASS body = 1
+CLASS head = 5
+CLASS tail = 6
+CLASS sub = 8
+CLASS phg = 9
+
+# These classes form a single mutually exclusive group
+GROUP body, head, tail
+
+# Additional exclusion rules applied
+RULE head EXCLUDES sub body tail
+RULE body EXCLUDES head tail
+RULE tail EXCLUDES head body
