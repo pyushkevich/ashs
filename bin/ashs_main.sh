@@ -75,36 +75,27 @@ function usage()
 	USAGETEXT
 }
 
-# Run parent-level code
-source ${ASHS_ROOT?}/bin/ashs_common_master.sh
-
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
   exit 2
 fi
 
-# Configuration file
-ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
-
-# Load the library
-source $ASHS_ROOT/bin/ashs_lib.sh
-
 # Read the options
 while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
   case $opt in
 
-    a) ATLAS=$OPTARG;;
+    a) ATLAS=$(readlink -f $OPTARG);;
     g) ASHS_MPRAGE=$OPTARG;;
     f) ASHS_TSE=$OPTARG;;
-    w) ASHS_WORK=$OPTARG;;
+    w) ASHS_WORK=$(readlink -f $OPTARG);;
 		s) STAGE_SPEC=$OPTARG;;
 		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
 		T) ASHS_TIDY=1;;
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
     q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
-    C) ASHS_CONFIG=$OPTARG;;
+    C) ASHS_CONFIG=$(readlink -f $OPTARG);;
     d) set -x -e;;
     h) usage; exit 0;;
     V) vers; exit 0;;
@@ -113,6 +104,23 @@ while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
 
   esac
 done
+
+# Check the root dir
+if [[ ! $ASHS_ROOT ]]; then
+  echo "Please set ASHS_ROOT to the ASHS root directory before running $0"
+  exit -2
+elif [[ $ASHS_ROOT != $(readlink -f $ASHS_ROOT) ]]; then
+  echo "ASHS_ROOT must point to an absolute path, not a relative path"
+  exit -2
+fi
+
+# Set the config file
+if [[ ! $ASHS_CONFIG ]]; then
+  ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+fi
+
+# Load the library. This also processes the config file
+source $ASHS_ROOT/bin/ashs_lib.sh
 
 # Check if the required parameters were passed in
 echo "Atlas    : ${ATLAS?    "Directory for atlas was not specified. See $0 -h"}
@@ -179,9 +187,6 @@ fi
 
 # Create the working directory and the dump directory
 mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
-
-# Read the configuration file
-source $ASHS_CONFIG
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS

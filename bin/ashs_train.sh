@@ -91,12 +91,6 @@ function usage()
 	USAGETEXT
 }
 
-# Default config
-ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
-
-# Load the library
-source $ASHS_ROOT/bin/ashs_lib.sh
-
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
@@ -107,15 +101,15 @@ fi
 while getopts "C:D:L:w:s:x:q:r:NdhV" opt; do
   case $opt in
 
-    D) LISTFILE=$OPTARG;;
-    L) ASHS_LABELFILE=$OPTARG;;
-    w) ASHS_WORK=$OPTARG;;
+    D) LISTFILE=$(readlink -f $OPTARG);;
+    L) ASHS_LABELFILE=$(readlink -f $OPTARG);;
+    w) ASHS_WORK=$(readlink -f $OPTARG);;
 		s) STAGE_SPEC=$OPTARG;;
 		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
     q) QOPTS=$OPTARG;;
-    C) ASHS_CONFIG=$OPTARG;;
+    C) ASHS_CONFIG=$(readlink -f $OPTARG);;
     r) ASHS_HEURISTICS=$(readlink -f $OPTARG);;
-    x) ASHS_XVAL=$OPTARG;;
+    x) ASHS_XVAL=$(readlink -f $OPTARG);;
     d) set -x -e;;
     h) usage; exit 0;;
     V) vers; exit 0;;
@@ -124,6 +118,15 @@ while getopts "C:D:L:w:s:x:q:r:NdhV" opt; do
 
   esac
 done
+
+# Check the root dir
+if [[ ! $ASHS_ROOT ]]; then
+  echo "Please set ASHS_ROOT to the ASHS root directory before running $0"
+  exit -2
+elif [[ $ASHS_ROOT != $(readlink -f $ASHS_ROOT) ]]; then
+  echo "ASHS_ROOT must point to an absolute path, not a relative path"
+  exit -2
+fi
 
 # Check the listfile
 if [[ ! -f $LISTFILE ]]; then
@@ -136,8 +139,13 @@ if [[ ! -f $ASHS_LABELFILE ]]; then
   exit -1;
 fi
 
-# Read the config file
-source $ASHS_CONFIG
+# Set the config file
+if [[ ! $ASHS_CONFIG ]]; then
+  ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+fi
+
+# Load the library and read the config file in the process
+source $ASHS_ROOT/bin/ashs_lib.sh
 
 # Get the list of ids
 ATLAS_ID=( $(cat $LISTFILE | awk '! /^[ \t]*#/ {print $1}') );

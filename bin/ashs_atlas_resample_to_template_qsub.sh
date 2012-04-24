@@ -30,7 +30,7 @@ set -x -e
 id=${1?}
 
 # Include the common file
-source ashs_lib.sh
+source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 # Verify all the necessary inputs
 cat <<-BLOCK1

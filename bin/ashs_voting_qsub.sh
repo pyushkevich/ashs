@@ -26,7 +26,7 @@
 
 set -x -e
 
-source $ASHS_ROOT/bin/ashs_lib.sh
+source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 # Determine side based on the TASK ID
 SIDES=(left right)

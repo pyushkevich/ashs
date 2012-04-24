@@ -27,7 +27,7 @@
 set -x -e
 
 # Library
-source $ASHS_ROOT/bin/ashs_lib.sh
+source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 # Determine training case and side based on the TASK ID
 SIDES=(left right)

@@ -31,7 +31,7 @@ id=${1?}
 tid=${2?}
 side=${3?}
 
-source ashs_lib.sh
+source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 cd $ASHS_WORK/atlas/$id
 
