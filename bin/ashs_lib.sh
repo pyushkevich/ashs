@@ -662,7 +662,7 @@ function ashs_atlas_adaboost_train()
 
         # Perform the multi-atlas segmentation
         qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_lf_${XVID[i]}_${side}_loo_${id}" \
-           $ASHS_ROOT/bin/ashs_atlas_lf_qsub.sh $id $TRAIN $FNOUT $side
+           $ASHS_ROOT/bin/ashs_atlas_lf_qsub.sh $id "$TRAIN" $FNOUT $side
 
       done
     done
