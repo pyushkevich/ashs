@@ -30,9 +30,8 @@ set -x -e
 source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 # Determine training case and side based on the TASK ID
-SIDES=(left right)
-side=${SIDES[$(((SGE_TASK_ID - 1) % 2))]}
-tid=$(printf %03d $(((SGE_TASK_ID - 1)/ 2)))
+side=${1?}
+tid=${2?}
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
@@ -40,7 +39,6 @@ cat <<-BLOCK1
 	Root: ${ASHS_ROOT?}
 	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
-	Subjob ID: ${SGE_TASK_ID}
 	Side: ${side?}
 	Training subject: ${tid?}
 BLOCK1

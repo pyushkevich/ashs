@@ -28,19 +28,15 @@ set -x -e
 
 source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
-# Determine side based on the TASK ID
-SIDES=(left right)
-side=${SIDES[$(((SGE_TASK_ID - 1) % 2))]}
-
 # Bootstrap mode or not
 BOOTSTRAP=${1?}
+side=${2?}
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_voting_qsub.sh
 	Root: ${ASHS_ROOT?}
 	Working directory: ${ASHS_WORK?}
-	Subjob ID: ${SGE_TASK_ID}
 	Side: ${side?}
 	PATH: ${PATH?}
 	BOOTSTRAP: ${BOOTSTRAP}

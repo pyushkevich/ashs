@@ -179,9 +179,12 @@ fi
 # Create the working directory and the dump directory
 mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 
+# The training module MUST use qsub
+ASHS_USE_QSUB=1
+
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS 
-export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE
+export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB
 
 # Set the start and end stages
 if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then

@@ -210,6 +210,12 @@ fi
 # Get the number of atlases, other information
 source $ASHS_ATLAS/ashs_atlas_vars.sh
 
+# List of sides for the array qsub commands below
+SIDES="left right"
+
+# List of training atlases 
+TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)
+
 for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
 
   case $STAGE in 
@@ -222,22 +228,22 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     2) 
     # Multi-atlas matching 
     echo "Running stage 2: normalize to multiple T1/T2 atlases"
-    qsubmit_array "ashs_stg2" $((ASHS_ATLAS_N*2)) $ASHS_ROOT/bin/ashs_multiatlas_qsub.sh ;;
+    qsubmit_double_array "ashs_stg2" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_multiatlas_qsub.sh ;;
 
     3) 
     # Voting
     echo "Running stage 3: Label Fusion"
-    qsubmit_array "ashs_stg3" 2 $ASHS_ROOT/bin/ashs_voting_qsub.sh 0;;
+    qsubmit_single_array "ashs_stg3" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 0 ;;
 
 		4)
 		# Bootstrapping
 		echo "Running stage 4: Bootstrap segmentation"
-    qsubmit_array "ashs_stg3" $((ASHS_ATLAS_N*2)) $ASHS_ROOT/bin/ashs_bootstrap_qsub.sh ;;
+    qsubmit_double_array "ashs_stg4" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_bootstrap_qsub.sh ;;
 
 	  5)
 		# Bootstrap voting
 		echo "Running stage 5: Bootstrap label fusion" 
-    qsubmit_array "ashs_stg5" 2 $ASHS_ROOT/bin/ashs_voting_qsub.sh 1;;
+    qsubmit_single_array "ashs_stg5" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 1 ;;
 
     6)
     # Final QA
@@ -248,16 +254,6 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     # Statistics & Volumes
     echo "Running stage 7: Statistics and Volumes"
     qsubmit_sync "ashs_stg7" $ASHS_ROOT/bin/ashs_extractstats_qsub.sh ;;
-
-    ### 8) 
-    ### Fit cm-rep models
-    ### echo "Running stage 8: Thickness analysis"
-    ### qsubmit_array "ashs_stg8" 4 $ASHS_ROOT/bin/ashs_thickness_qsub.sh ;;
-
-    ## 4)
-    ## # Final QA
-    ### echo "Running stage 4: Final QA"
-    ### qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_stg6" $ASHS_ROOT/bin/ashs_finalqa_qsub.sh ;;
 
   esac  
 

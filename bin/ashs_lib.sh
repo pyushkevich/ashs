@@ -48,22 +48,101 @@ function get_tmpdir()
   echo $(mktemp -d -t ashs.XXXXXXXX)
 }
 
+# Simulate qsub environment in bash (i.e., create and set tempdir)
+# This function expects the name of the job as first parameter
+function fake_qsub()
+{
+  local MYNAME=$1
+  shift 1
+
+  local PARENTTMPDIR=$TMPDIR
+  TMPDIR=$(get_tmpdir)
+  export TMPDIR
+
+  bash $* 2>&1 | tee $ASHS_WORK/dump/${MYNAME}.o$(date +%Y%m%d_%H%M%S)
+
+  rm -rf $TMPDIR
+  TMPDIR=$PARENTTMPDIR
+}
+
+
 # Submit a job to the queue (or just run job) and wait until it finishes
 function qsubmit_sync()
 {
+  local MYNAME=$1
+  shift 1
+
   if [[ $ASHS_USE_QSUB ]]; then
-    qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $1 $2 $3 $4 $5 $6 $7 $8 $9
+    qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $MYNAME $*
   else
-    local PARENTTMPDIR=$TMPDIR
-    TMPDIR=$(get_tmpdir)
-    export TMPDIR
-
-    bash $2 $3 $4 $5 $6 $7 $8 $9 2>&1 | tee $ASHS_WORK/dump/${1}.o$(date +%Y%m%d_%H%M%S)
-
-    rm -rf $TMPDIR
-    TMPDIR=$PARENTTMPDIR
+    fake_qsub $MYNAME $*
   fi
 }
+
+# Submit an array of jobs parameterized by a single parameter. The parameter is passed in 
+# to the job after all other positional parameters
+function qsubmit_single_array()
+{
+  local NAME=$1
+  local PARAM=$2
+  shift 2;
+
+  # Generate unique name to prevent clashing with qe
+  local UNIQ_NAME=${NAME}_${$}
+
+  for p1 in $PARAM; do
+
+    if [[ $ASHS_USE_QSUB ]]; then
+
+      qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1} $* $p1
+
+    else
+
+      fake_qsub ${NAME}_${p1} $* $p1
+
+    fi
+  done
+
+  # Wait for the jobs to be done
+  qwait "${UNIQ_NAME}_*"
+}
+
+
+# Submit an array of jobs parameterized by a single parameter. The parameter is passed in 
+# to the job after all other positional parameters
+function qsubmit_double_array()
+{
+  local NAME=$1
+  local PARAM1=$2
+  local PARAM2=$3
+  shift 3;
+
+  # Generate unique name to prevent clashing with qe
+  local UNIQ_NAME=${NAME}_${$}
+
+  for p1 in $PARAM1; do
+    for p2 in $PARAM2; do
+
+      if [[ $ASHS_USE_QSUB ]]; then
+
+        qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1}_${p2} $* $p1 $p2
+
+      else
+
+        fake_qsub ${NAME}_${p1}_${p2} $* $p1 $p2
+
+      fi
+    done
+  done
+
+  # Wait for the jobs to be done
+  qwait "${UNIQ_NAME}_*"
+}
+
+
+      
+
+
 
 # Submit an array of jobs to the queue
 function qsubmit_array()
@@ -95,7 +174,9 @@ function qsubmit_array()
 # Wait for qsub to finish
 function qwait() 
 {
-  qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
+  if [[ $ASHS_USE_QSUB ]]; then
+    qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
+  fi
 }
 
 # Report the version number
@@ -725,7 +806,7 @@ function ashs_atlas_adaboost_train()
         XID=${XVID[i]}
 
         qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${XID}_${id}_${side}" \
-          $ASHS_ROOT/bin/ashs_atlas_loo_qsub.sh $id $side $XID $TRAIN
+          $ASHS_ROOT/bin/ashs_atlas_loo_qsub.sh $id $side $XID "$TRAIN"
 
       done
     done
