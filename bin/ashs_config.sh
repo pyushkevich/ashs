@@ -122,6 +122,9 @@ ASHS_PAIRWISE_ANTS_STEPSIZE="0.25"
 # a floating point number between 0 and 1
 ASHS_PAIRWISE_ANTS_T1_WEIGHT=0
 
+# The amount of smoothing applied to label images before warping them,
+# can either be in millimeters (mm) or voxels (vox)
+ASHS_LABEL_SMOOTHING="0.24mm"
 
 # -----------------------------------------------
 # Label Fusion Parameters

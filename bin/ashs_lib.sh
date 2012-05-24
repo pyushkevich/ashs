@@ -305,7 +305,7 @@ function ashs_ants_pairwise()
 	for ((i=0; i < ${#LSET[*]}; i++)); do
 
 		local LID=$(printf '%03d' $i)
-		c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth 0.24mm -o $TMPDIR/label_${LID}.nii.gz
+		c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth $ASHS_LABEL_SMOOTHING -o $TMPDIR/label_${LID}.nii.gz
 
 		WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
 			$TMPDIR/label_${LID}_warp.nii.gz \
@@ -409,8 +409,8 @@ BLOCK1
   cd $ASHS_WORK/atlas/$id
 
   # Perform label fusion using the atlases
-  ATLASES=$(echo $TRAIN | sed -e "s|\w*|tseg_${side}_train&/atlas_to_native.nii.gz|g")
-  ATLSEGS=$(echo $TRAIN | sed -e "s|\w*|tseg_${side}_train&/atlas_to_native_segvote.nii.gz|g")
+  ATLASES=$(echo $TRAIN | sed -e "s|\w*|pairwise/tseg_${side}_train&/atlas_to_native.nii.gz|g")
+  ATLSEGS=$(echo $TRAIN | sed -e "s|\w*|pairwise/tseg_${side}_train&/atlas_to_native_segvote.nii.gz|g")
 
   # If there are heuristics, make sure they are supplied to the LF program
   if [[ $ASHS_HEURISTICS ]]; then

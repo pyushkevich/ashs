@@ -43,12 +43,13 @@ MYWORK=$ASHS_WORK/atlas/$id
 WFSL=$MYWORK/flirt_t2_to_t1
 mkdir -p $MYWORK $WFSL
 
-# Copy the images into the working directory
+# Copy the images into the working directory and set the transforms
+# of the segmentations to equal the transforms of the input images.
 $ASHS_BIN/c3d -type ushort \
   $2 -o $MYWORK/mprage.nii.gz \
-  $3 -o $MYWORK/tse.nii.gz \
-  $4 -o $MYWORK/seg_left.nii.gz \
-  $5 -o $MYWORK/seg_right.nii.gz
+  $3 -o $MYWORK/tse.nii.gz -popas REF \
+  -push REF $4 -copy-transform -o $MYWORK/seg_left.nii.gz \
+  -push REF $5 -copy-transform -o $MYWORK/seg_right.nii.gz
 
 # Peform registration between the two modalities
 ashs_align_t1t2 $MYWORK $WFSL

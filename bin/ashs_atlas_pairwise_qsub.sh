@@ -55,7 +55,7 @@ TDIR=$ASHS_WORK/atlas/${tid}
 TSEG=$TDIR/seg_${side}.nii.gz
 
 # Create directory for this registration
-WREG=tseg_${side}_train${tid}
+WREG=pairwise/tseg_${side}_train${tid}
 mkdir -p $WREG
 
 # Run ANTS with current image as fixed, training image as moving
