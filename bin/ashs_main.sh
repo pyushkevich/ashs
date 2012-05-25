@@ -81,6 +81,11 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+# Clear the variables affected by the flags
+unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
+unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
+unset ASHS_USE_QSUB
+
 # Read the options
 while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
   case $opt in

@@ -702,6 +702,119 @@ function ashs_atlas_organize_final()
 }
 
 
+# Organize cross-validation directories for running cross-validation experiments
+function ashs_atlas_organize_xval()
+{
+  # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
+  # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
+  local NXVAL=$(cat $ASHS_XVAL | wc -l)
+
+  # Arrays for the main training
+  XV_TRAIN[0]=${ATLAS_ID[*]}
+  XV_TEST[0]=""
+  XVID[0]="main"
+
+  # Arrays for the cross-validation training
+  for ((jx=1;jx<=$NXVAL;jx++)); do
+
+    XV_TEST[$jx]=$(cat $ASHS_XVAL | awk "NR==$jx { print \$0 }")
+    XV_TRAIN[$jx]=$(echo $( for((i=0;i<$N;i++)); do echo ${ATLAS_ID[i]}; done | awk "\"{${XV_TEST[$jx]}}\" !~ \$1 {print \$1}"))
+    XVID[$jx]=xval$(printf %04d $jx)
+
+  done
+
+  # Organize the directories
+  for ((i=1; i<=$NXVAL; i++)); do
+
+    # The x-validation ID
+    local XID=${XVID[i]}
+    local TRAIN=${XV_TRAIN[i]}
+
+    # Create the atlas for this experiment (based on all the training cases for it)
+    local XVATLAS=$ASHS_WORK/xval/${XID}/atlas
+    mkdir -p $XVATLAS
+
+    # Create links to stuff from the main atlas
+    for fn in $(ls $ASHS_WORK/final | grep -v "\(adaboost\|train\)"); do
+      ln -sf $ASHS_WORK/final/$fn $XVATLAS/$fn
+    done
+
+    # For the train directory, only choose the atlases that are in the training set
+    mkdir -p $XVATLAS/train
+    local myidx=0
+    for tid in $TRAIN; do
+
+      # Get the index of the training ID among all training subjects
+      local srcdir=$(for qid in ${ATLAS_ID[*]}; do echo $qid; done | awk "\$1~/$tid/ {printf \"train%03d\n\",NR-1}")
+      local trgdir=$(printf "train%03d" $myidx)
+
+      # Link the two directories
+      ln -sf $ASHS_WORK/final/train/$srcdir $XVATLAS/train/$trgdir
+
+      # Increment the index
+      myidx=$((myidx+1))
+    done
+
+    # For the adaboost directory, link the corresponding cross-validation experiment
+    mkdir -p $XVATLAS/adaboost
+    for side in left right; do
+      ln -sf $ASHS_WORK/train/${XID}_${side} $XVATLAS/adaboost/$side
+    done
+
+    # Now, for each test subject, initialize the ASHS directory with links
+    for testid in ${XV_TEST[i]}; do
+
+      # Create the directory for this run
+      local IDFULL=${XID}_test_${testid}
+      local XVSUBJ=$ASHS_WORK/xval/${XID}/test/$IDFULL
+      mkdir -p $XVSUBJ
+
+      # The corresponding atlas directory
+      local MYATL=$ASHS_WORK/atlas/$testid/
+
+      # Populate the critical results to avoid having to run registrations twice
+      mkdir -p $XVSUBJ/affine_t1_to_template
+      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempAffine.txt $XVSUBJ/affine_t1_to_template/t1_to_template_ITK.txt
+
+      mkdir -p $XVSUBJ/ants_t1_to_temp
+      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempAffine.txt $XVSUBJ/ants_t1_to_temp/ants_t1_to_tempAffine.txt
+      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz $XVSUBJ/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz
+      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz $XVSUBJ/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz
+
+      mkdir -p $XVSUBJ/flirt_t2_to_t1
+      ln -sf $MYATL/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt $XVSUBJ/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt
+
+      # We can also reuse the atlas-to-target stuff
+      myidx=0
+      for tid in $TRAIN; do
+        for side in left right; do
+
+          local tdir=$XVSUBJ/multiatlas/tseg_${side}_train$(printf %03d $myidx)  
+          mkdir -p $tdir
+
+          local sdir=$MYATL/pairwise/tseg_${side}_train${tid}
+
+          for fname in antsregAffine.txt antsregInverseWarp.nii.gz antsregWarp.nii.gz; do
+            ln -sf $sdir/$fname $tdir/$fname
+          done
+        done
+        myidx=$((myidx+1))
+      done
+
+      # Now, we can launch the ashs_main segmentation for this subject!
+      qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${IDFULL}" \
+        $ASHS_ROOT/bin/ashs_main.sh \
+          -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d
+
+    done
+
+  done
+
+  # Wait for it all to be done
+  qwait "ashs_xval_*"
+}
+
+
 
 # Top level code for AdaBoost training and cross-validation
 function ashs_atlas_adaboost_train()
@@ -794,23 +907,4 @@ function ashs_atlas_adaboost_train()
   # Wait for the training to finish  
   qwait "ashs_bl_*"
 
-  # Now, for each cross-validation experiment perform voting followed by bias correction
-  for ((i=1; i<=$NXVAL; i++)); do
-    for side in left right; do
-
-      TRAIN=${XV_TRAIN[i]}
-
-      # Iterate over the test subjects
-      for id in ${XV_TEST[i]}; do
-
-        XID=${XVID[i]}
-
-        qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${XID}_${id}_${side}" \
-          $ASHS_ROOT/bin/ashs_atlas_loo_qsub.sh $id $side $XID "$TRAIN"
-
-      done
-    done
-  done
-
-  qwait "ashs_xval_*"
 }

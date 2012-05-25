@@ -45,7 +45,15 @@ function usage()
 		  -q string         List of additional options to pass to qsub (Sun Grid Engine)
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		  -V                Display version information and exit
+
 		stages:
+      0                 Initialize atlas directory
+      1                 Build population-specific template
+      2                 Resample each atlas to template space
+      3                 Perform n^2 registration between all atlases
+      4                 Train AdaBoost method
+      5                 Organize final directory
+      6                 Cross-validation      
 
 		data file:
 		  The datafile is a comma-separated file listing, with rows corresponding to input images
@@ -243,6 +251,13 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     # Organize everything into an atlas that can be used with the main ASHS script
     echo "Running stage 5: Organize the output directory"
     ashs_atlas_organize_final;;
+
+    6)
+
+    # Organize everything into an atlas that can be used with the main ASHS script
+    echo "Running stage 6: Perform cross-validation"
+    ashs_atlas_organize_xval;;
+
 
 
   esac

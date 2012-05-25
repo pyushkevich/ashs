@@ -35,7 +35,7 @@ tid=${2?}
 
 # Verify all the necessary inputs
 cat <<-BLOCK1
-	Script: ashs_multiatlas_qsub.sh
+	Script: ashs_bootstrap_qsub.sh
 	Root: ${ASHS_ROOT?}
 	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}

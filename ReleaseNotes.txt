@@ -4,6 +4,20 @@ Release Notes
 ######################################################
 
 =========================
+Revision 90, May 2012
+=========================
+
+New in this Revision:
+---------------------
+
+* Fixed various bugs resulting from changes in revision 80
+
+* Changed the way cross-valudation is performed in ashs_train. Now, for each
+  cross-valudation experiment, we set up a "mock atlas" directory and run the
+  main ASHS script to perform cross-validation. 
+
+
+=========================
 Revision 81, April 2012
 =========================
 
