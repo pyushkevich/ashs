@@ -349,10 +349,12 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
 
       // Once the patch has been found, compute the absolute difference with target image
       InputImagePixelType bestMatchMean = bestMatchSum / nPatch;
-      InputImagePixelType bestMatchSD = 
-        sqrt((bestMatchSSQ - nPatch * bestMatchMean * bestMatchMean) / (nPatch - 1)); 
-      if(bestMatchSD < 1.0e-6)
-        bestMatchSD = 1.0e-6;
+      InputImagePixelType bestMatchVar = 
+        (bestMatchSSQ - nPatch * bestMatchMean * bestMatchMean) / (nPatch - 1);
+      if(bestMatchVar < 1.0e-12)
+        bestMatchVar = 1.0e-12;
+      InputImagePixelType bestMatchSD = sqrt(bestMatchVar);
+
       for(unsigned int m = 0; m < nPatch; m++)
         {
         InputImagePixelType x = *(bestMatchPtr + offPatch[m]);
