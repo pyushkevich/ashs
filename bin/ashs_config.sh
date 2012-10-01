@@ -90,6 +90,11 @@ ASHS_TEMPLATE_ROI_MARGIN="4x4x4vox"
 # rule for this. Setting it too high will slow everything down.
 ASHS_TEMPLATE_TARGET_RESOLUTION="0.4688x0.4688x0.4688mm"
 
+# When creating a mask to define the template, we average the input segmentations
+# and set a threshold. When there are lots of atlases, 0.5 is reasonable, but for
+# smaller atlas sets, this should be reduced
+ASHS_TEMPLATE_MASK_THRESHOLD=0.5
+
 
 # -----------------------------
 # Histogram matching parameters

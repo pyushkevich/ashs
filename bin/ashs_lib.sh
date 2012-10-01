@@ -401,7 +401,7 @@ cat <<-BLOCK1
 	PATH: ${PATH?}
 	Subject: ${id?}
 	Train Set: ${TRAIN?}
-	  Output: ${FNOUT?}
+	Output: ${FNOUT?}
 	Side: ${side?}
 BLOCK1
 
@@ -553,7 +553,7 @@ function ashs_atlas_build_template()
 
     # Average the segmentations and create a target ROI with desired resolution
     c3d $(echo ${ATLAS_ID[*]} | sed -e "s|\w*|&_seg_${side}.nii.gz|g") \
-      -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh 0.5 inf 1 0 \
+      -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
       -o meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
       -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
       -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \

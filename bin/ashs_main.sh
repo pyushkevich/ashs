@@ -58,7 +58,17 @@ function usage()
 		                    of segmentations and have SGE, it is better to run each segmentation 
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
-      -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
+		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
+		  -r files          Compare segmentation results with a reference segmentation. The parameter
+		                    files should consist of two nifti files in quotation marks:
+
+		                      -r "ref_seg_left.nii.gz ref_seg_right.nii.gz"
+                        
+		                    The results will include overlap calculations between different
+		                    stages of the segmentation and the reference segmentation. Note that the
+		                    comparison takes into account the heuristic rules specified in the altas, so
+		                    it is not as simple as computing dice overlaps between the reference seg
+		                    and the ASHS segs.
 
 		stages:
 		  1:                fit to population template
@@ -84,7 +94,7 @@ fi
 # Clear the variables affected by the flags
 unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
 unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
-unset ASHS_USE_QSUB
+unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 
 # Read the options
 while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
@@ -94,13 +104,14 @@ while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
     g) ASHS_MPRAGE=$OPTARG;;
     f) ASHS_TSE=$OPTARG;;
     w) ASHS_WORK=$(readlink -f $OPTARG);;
-		s) STAGE_SPEC=$OPTARG;;
-		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
-		T) ASHS_TIDY=1;;
+    s) STAGE_SPEC=$OPTARG;;
+    N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
+    T) ASHS_TIDY=1;;
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
     q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
     C) ASHS_CONFIG=$(readlink -f $OPTARG);;
+    r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
     d) set -x -e;;
     h) usage; exit 0;;
     V) vers; exit 0;;
@@ -132,6 +143,20 @@ echo "Atlas    : ${ATLAS?    "Directory for atlas was not specified. See $0 -h"}
 echo "T1 Image : ${ASHS_MPRAGE?   "T1-weighted MRI was not specified. See $0 -h"}
 echo "T2 Image : ${ASHS_TSE?      "T2-weighted MRI was not specified. See $0 -h"}
 echo "WorkDir  : ${ASHS_WORK?     "Working directory was not specified. See $0 -h"}
+
+# Handle the -r parameter
+if [[ $ASHS_REFSEG_LIST ]]; then
+  if [[ ${#ASHS_REFSEG_LIST[*]} -eq 2 ]]; then
+    ASHS_REFSEG_LEFT=$(readlink -f ${ASHS_REFSEG_LIST[0]})
+    ASHS_REFSEG_RIGHT=$(readlink -f ${ASHS_REFSEG_LIST[1]})
+    if [[ ! -f $ASHS_REFSEG_LEFT || ! -f $ASHS_REFSEG_RIGHT ]]; then
+      echo "Reference segmentation $ASHS_REFSEG_LEFT $ASHS_REFSEG_RIGHT not found"
+      exit -2
+    fi
+  else
+    echo "Wrong number of parameters to -r option"
+  fi
+fi
 
 # Whether we are using QSUB
 if [[ $ASHS_USE_QSUB ]]; then
@@ -240,14 +265,14 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     echo "Running stage 3: Label Fusion"
     qsubmit_single_array "ashs_stg3" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 0 ;;
 
-		4)
-		# Bootstrapping
-		echo "Running stage 4: Bootstrap segmentation"
+    4)
+    # Bootstrapping
+    echo "Running stage 4: Bootstrap segmentation"
     qsubmit_double_array "ashs_stg4" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_bootstrap_qsub.sh ;;
 
-	  5)
-		# Bootstrap voting
-		echo "Running stage 5: Bootstrap label fusion" 
+    5)
+    # Bootstrap voting
+    echo "Running stage 5: Bootstrap label fusion" 
     qsubmit_single_array "ashs_stg5" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 1 ;;
 
     6)
