@@ -160,7 +160,7 @@ ASHS_EC_DILATION=1
 # Target number of samples for AdaBoost training. If there are more samples,
 # only a random fraction of the samples will be used for training. Lower
 # values speed up training
-ASHS_EC_TARGET_SAMPLES=20000
+ASHS_EC_TARGET_SAMPLES=16000
 
 # Number of iterations for AdaBoost training.
 ASHS_EC_ITERATIONS=500

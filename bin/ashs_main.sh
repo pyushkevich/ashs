@@ -97,7 +97,7 @@ unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:NTdhVQ" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:NTdhVQ" opt; do
   case $opt in
 
     a) ATLAS=$(readlink -f $OPTARG);;
@@ -220,19 +220,18 @@ mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
-export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE
+export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT
 
 # Set the start and end stages
-if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
-  STAGE_START=$STAGE_SPEC
-  STAGE_END=$STAGE_SPEC
-elif [[ $STAGE_SPEC && $STAGE_SPEC =~ "^([0-9]*)\-([0-9]*)$" ]]; then
-  STAGE_START=${BASH_REMATCH[1]}
-  STAGE_END=${BASH_REMATCH[2]}
-elif [[ ! $STAGE_SPEC ]]; then
+if [[ $STAGE_SPEC ]]; then
+  STAGE_START=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $1}')
+  STAGE_END=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $NF}')
+else
   STAGE_START=1
   STAGE_END=15
-else
+fi
+
+if [[ ! $STAGE_END || ! $STAGE_START ]]; then
   echo "Wrong stage specification -s $STAGE_SPEC"
   exit -1;
 fi

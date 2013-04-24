@@ -55,8 +55,10 @@ SEGUNC=$WXVAL/${id}_${side}_xval_seg_uncorr.nii.gz
 SEGCOR=$WXVAL/${id}_${side}_xval_seg_corr.nii.gz
 SEGTRUTH=$ASHS_WORK/atlas/$id/tse_native_chunk_${side}_seg.nii.gz
 
+POSTUNC=$WXVAL/${id}_${side}_xval_posterior_%03d_uncorr.nii.gz
+
 # Call the label fusion library command
-ashs_label_fusion $id $SEGUNC
+ashs_label_fusion $id $SEGUNC $POSTUNC
 
 # Apply the correction
 pushd $ASHS_WORK/train/${XID}_${side}

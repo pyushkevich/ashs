@@ -113,7 +113,7 @@ while getopts "C:D:L:w:s:x:q:r:NdhV" opt; do
     L) ASHS_LABELFILE=$(readlink -f $OPTARG);;
     w) ASHS_WORK=$(readlink -f $OPTARG);;
 		s) STAGE_SPEC=$OPTARG;;
-		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
+		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
     q) QOPTS=$OPTARG;;
     C) ASHS_CONFIG=$(readlink -f $OPTARG);;
     r) ASHS_HEURISTICS=$(readlink -f $OPTARG);;
@@ -191,20 +191,19 @@ mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 ASHS_USE_QSUB=1
 
 # Run the stages of the script
-export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS 
+export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB
 
 # Set the start and end stages
-if [[ $STAGE_SPEC && $STAGE_SPEC =~ "^[0-9]*$" ]]; then
-  STAGE_START=$STAGE_SPEC
-  STAGE_END=$STAGE_SPEC
-elif [[ $STAGE_SPEC && $STAGE_SPEC =~ "^([0-9]*)\-([0-9]*)$" ]]; then
-  STAGE_START=${BASH_REMATCH[1]}
-  STAGE_END=${BASH_REMATCH[2]}
-elif [[ ! $STAGE_SPEC ]]; then
+if [[ $STAGE_SPEC ]]; then
+  STAGE_START=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $1}')
+  STAGE_END=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $NF}')
+else
   STAGE_START=0
   STAGE_END=15
-else
+fi
+
+if [[ ! $STAGE_END || ! $STAGE_START ]]; then
   echo "Wrong stage specification -s $STAGE_SPEC"
   exit -1;
 fi

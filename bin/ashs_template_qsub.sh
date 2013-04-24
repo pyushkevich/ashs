@@ -57,7 +57,6 @@ if [[ $ASHS_TSE -nt $ASHS_WORK/tse.nii.gz ]]; then
   c3d $ASHS_TSE -type ushort -o $ASHS_WORK/tse.nii.gz 
 fi
 
-
 # Histogram match the images to a reference image (used later down the road, but better to do it now)
 for kind in tse mprage; do
   c3d $ASHS_ATLAS/ref_hm/ref_${kind}.nii.gz $ASHS_WORK/${kind}.nii.gz \
@@ -134,6 +133,26 @@ WarpImageMultiTransform 3 $ASHS_WORK/tse.nii.gz $WANT/reslice_tse_to_template.ni
 
 # Transform all of the images into the chunk template space
 ashs_reslice_to_template $ASHS_WORK $ASHS_ATLAS
+
+# If there is a reference segmentation image, process it too
+if [[ -f $ASHS_REFSEG_RIGHT && -f $ASHS_REFSEG_LEFT ]]; then
+  mkdir -p $ASHS_WORK/refseg
+  c3d $ASHS_REFSEG_LEFT -type ushort -o $ASHS_WORK/refseg/refseg_left.nii.gz
+  c3d $ASHS_REFSEG_RIGHT -type ushort -o $ASHS_WORK/refseg/refseg_right.nii.gz
+
+  if [[ $ASHS_HEURISTICS ]]; then
+    for side in left right; do
+
+      c3d $ASHS_WORK/tse_native_chunk_${side}.nii.gz $ASHS_WORK/refseg/refseg_${side}.nii.gz \
+        -int 0 -reslice-identity -type short -o $ASHS_WORK/refseg/refseg_native_chunk_${side}.nii.gz
+    
+      mkdir -p $ASHS_WORK/refseg/heurex
+      subfield_slice_rules $ASHS_WORK/refseg/refseg_native_chunk_${side}.nii.gz \
+        $ASHS_HEURISTICS $ASHS_WORK/refseg/heurex/heurex_${side}_%04d.nii.gz
+
+    done
+  fi
+fi
 
 # We don't need to keep the histmatch images around
 if [[ $ASHS_TIDY ]]; then

@@ -393,6 +393,7 @@ function ashs_label_fusion()
 {
   id=${1?}
   FNOUT=${2?}
+  POSTERIOR=${3?}
 
 cat <<-BLOCK1
 	Script: ashs_atlas_pairwise.sh
@@ -412,6 +413,9 @@ BLOCK1
   ATLASES=$(echo $TRAIN | sed -e "s|\w*|pairwise/tseg_${side}_train&/atlas_to_native.nii.gz|g")
   ATLSEGS=$(echo $TRAIN | sed -e "s|\w*|pairwise/tseg_${side}_train&/atlas_to_native_segvote.nii.gz|g")
 
+  # TODO: should we address the problem of missing data? We are expecting 100% of the registrations
+  # to succeed, and that might not be realistic. We could include only the files that actually exist,
+
   # If there are heuristics, make sure they are supplied to the LF program
   if [[ $ASHS_HEURISTICS ]]; then
     EXCLCMD=$(for fn in $(ls heurex/heurex_${side}_*.nii.gz); do \
@@ -423,6 +427,7 @@ BLOCK1
   label_fusion 3 -g $ATLASES -l $ATLSEGS \
     -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
     $EXCLCMD \
+    -p ${POSTERIOR} \
     tse_native_chunk_${side}.nii.gz $FNOUT
 }
 
@@ -459,6 +464,7 @@ BLOCK1
 	local RESULT=$TDIR/fusion/lfseg_raw_${side}.nii.gz
   label_fusion 3 -g $ATLASES -l $ATLSEGS \
     -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+    -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
     tse_native_chunk_${side}.nii.gz $RESULT
 
   # If there are heuristics, make sure they are supplied to the LF program
@@ -473,21 +479,63 @@ BLOCK1
       echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
       done)
 
-		local RESULT=$TDIR/fusion/lfseg_heur_${side}.nii.gz
 		label_fusion 3 -g $ATLASES -l $ATLSEGS \
 			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
 			$EXCLCMD \
+      -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
 			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
+
 	else
 		# Just make a copy
 		cp -a $TDIR/fusion/lfseg_raw_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
 	fi
 
 	# Perform AdaBoost correction
-	sa tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz \
-		$ASHS_ATLAS/adaboost/${side}/adaboost \
-		$TDIR/fusion/lfseg_corr_${side}.nii.gz $EXCLCMD
+  ### Old code before posteriors 
+	### sa tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz \
+	### 	$ASHS_ATLAS/adaboost/${side}/adaboost \
+	###  	$TDIR/fusion/lfseg_corr_${side}.nii.gz $EXCLCMD
+	sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
+		$ASHS_ATLAS/adaboost/${side}/adaboost_usegray \
+		$TDIR/fusion/lfseg_corr_usegray_${side}.nii.gz $EXCLCMD \
+    -g tse_native_chunk_${side}.nii.gz -p $TDIR/fusion/posterior_${side}_%03d.nii.gz
+
+	sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
+		$ASHS_ATLAS/adaboost/${side}/adaboost_nogray \
+		$TDIR/fusion/lfseg_corr_nogray_${side}.nii.gz $EXCLCMD \
+    -p $TDIR/fusion/posterior_${side}_%03d.nii.gz
+
+  
+  # If there are reference segs, we have to repeat this again, but with heuristics from 
+  # the reference segmentations. This allows us to make a more fair comparison
+  if [[ $ASHS_HEURISTICS && -f $ASHS_WORK/refseg/refseg_${side}.nii.gz ]]; then
+
+		# Rerun label fusion
+    local EXCLCMD=$(for fn in $(ls $ASHS_WORK/refseg/heurex/heurex_${side}_*.nii.gz); do \
+      echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
+      done)
+
+		label_fusion 3 -g $ATLASES -l $ATLSEGS \
+			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+			$EXCLCMD \
+      -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz \
+			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz
+
+    # Rerun AdaBoost
+    sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
+      $ASHS_ATLAS/adaboost/${side}/adaboost_usegray \
+      $TDIR/fusion/lfseg_vsref_corr_usegray_${side}.nii.gz $EXCLCMD \
+      -g tse_native_chunk_${side}.nii.gz -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz
+
+    sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
+      $ASHS_ATLAS/adaboost/${side}/adaboost_nogray \
+      $TDIR/fusion/lfseg_vsref_corr_nogray_${side}.nii.gz $EXCLCMD \
+      -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz
+
+  fi
 }
+
+
 
 
 # *************************************************************
@@ -517,8 +565,10 @@ function ashs_atlas_build_template()
   pushd $ASHS_WORK/template_build
 
   # Populate
+  CMDLINE=""
   for id in ${ATLAS_ID[*]}; do
     ln -sf $ASHS_WORK/atlas/${id}/mprage.nii.gz ./${id}_mprage.nii.gz
+    CMDLINE="$CMDLINE ${id}_mprage.nii.gz"
   done
 
   # Run the template code
@@ -526,8 +576,7 @@ function ashs_atlas_build_template()
     echo "Skipping template building"
   else
     export ANTSPATH=$ASHS_ANTS/
-    buildtemplateparallel.sh -d 3 -o atlas -m ${ASHS_TEMPLATE_ANTS_ITER?} -r 1 -t GR -s CC \
-      $(echo ${ATLAS_ID[*]} | sed -e "s|\w*|&_mprage.nii.gz|g")
+    buildtemplateparallel.sh -d 3 -o atlas -m ${ASHS_TEMPLATE_ANTS_ITER?} -r 1 -t GR -s CC $CMDLINE
   fi
 
   # Copy the template into the final folder
@@ -697,8 +746,13 @@ function ashs_atlas_organize_final()
   # Copy the adaboost training files
   for side in left right; do
     mkdir -p $FINAL/adaboost/${side}
-    cp -av $ASHS_WORK/train/main_${side}/adaboost-* $FINAL/adaboost/${side}/
+    cp -av $ASHS_WORK/train/main_${side}/adaboost* $FINAL/adaboost/${side}/
   done
+
+  # Generate a brain mask for the template
+  export FSLOUTPUTTYPE=NIFTI_GZ
+  cd $FINAL/template
+  bet2 template.nii.gz template_bet -m -v 
 }
 
 
@@ -707,7 +761,10 @@ function ashs_atlas_organize_xval()
 {
   # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
   # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
-  local NXVAL=$(cat $ASHS_XVAL | wc -l)
+  local NXVAL=0
+  if [[ -f $ASHS_XVAL ]]; then
+    NXVAL=$(cat $ASHS_XVAL | wc -l)
+  fi
 
   # Arrays for the main training
   XV_TRAIN[0]=${ATLAS_ID[*]}
@@ -804,7 +861,8 @@ function ashs_atlas_organize_xval()
       # Now, we can launch the ashs_main segmentation for this subject!
       qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${IDFULL}" \
         $ASHS_ROOT/bin/ashs_main.sh \
-          -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d
+          -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
+          -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz"
 
     done
 
@@ -814,14 +872,31 @@ function ashs_atlas_organize_xval()
   qwait "ashs_xval_*"
 }
 
+# This function Qsubs the bl command unless the output is already present
+function ashs_check_bl_result()
+{
+  local RESFILE=$1;
 
+  if [[ -f $RESFILE ]]; then
+
+    local LASTIT=$(cat $RESFILE | tail -n 1 | awk '{print $1}');
+
+    if [[ $LASTIT -eq $ASHS_EC_ITERATIONS ]]; then
+      echo 1
+      return
+    fi
+  fi
+}
 
 # Top level code for AdaBoost training and cross-validation
 function ashs_atlas_adaboost_train()
 {
   # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
   # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
-  NXVAL=$(cat $ASHS_XVAL | wc -l)
+  local NXVAL=0
+  if [[ -f $ASHS_XVAL ]]; then 
+    NXVAL=$(cat $ASHS_XVAL | wc -l)
+  fi
 
   # Arrays for the main training
   XV_TRAIN[0]=${ATLAS_ID[*]}
@@ -849,15 +924,20 @@ function ashs_atlas_adaboost_train()
 
         # The atlas set for the cross-validation
         TRAIN=$(echo ${XV_TRAIN[i]} | sed -e "s/\<$id\>//g")
-        echo $TRAIN
 
         # The output path for the segmentation result
         FNOUT=$WTRAIN/loo_seg_${id}_${side}.nii.gz
 
-        # Perform the multi-atlas segmentation
-        qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_lf_${XVID[i]}_${side}_loo_${id}" \
-           $ASHS_ROOT/bin/ashs_atlas_lf_qsub.sh $id "$TRAIN" $FNOUT $side
+        # The output path for the posteriors
+        POSTERIOR=$WTRAIN/loo_posterior_${id}_${side}_%03d.nii.gz
 
+        # Perform the multi-atlas segmentation if the outputs exist
+        if [[ $ASHS_SKIP && -f $FNOUT ]]; then
+          echo "Skipping label fusion for ${XVID[i]}_${side}_loo_${id}"
+        else
+          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_lf_${XVID[i]}_${side}_loo_${id}" \
+             $ASHS_ROOT/bin/ashs_atlas_lf_qsub.sh $id "$TRAIN" $FNOUT $side $POSTERIOR
+        fi
       done
     done
   done
@@ -892,10 +972,43 @@ function ashs_atlas_adaboost_train()
         q=$ASHS_EC_TARGET_SAMPLES
         FRAC=$(cat counts.txt | awk "\$1==$label {print \$2 < $q ? 1 : $q/\$2}")
 
-        echo "Label $label fraction $FRAC"
-        qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_${XVID[i]}_${side}_${label}" -b y \
-           bl graylist.txt truthlist.txt autolist.txt $label \
-           $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost
+        # Generate the posterior lists
+        POSTLIST=$(printf posteriorlist_%03d.txt $label)
+        rm -rf $POSTLIST
+        for id in ${XV_TRAIN[i]}; do
+          echo $(printf loo_posterior_${id}_${side}_%03d.nii.gz $label) >> $POSTLIST
+        done
+
+        # We will generate two sets of training data: one with the grayscale information and
+        # another that only uses the posterior maps, and no grayscale information
+        ### echo "Label $label fraction $FRAC"
+
+        # Check if the training results already exist
+        if [[ $ASHS_SKIP && $(ashs_check_bl_result adaboost_usegray-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
+
+          echo "Skipping training for ${XVID[i]}_${side} label $label adaboost_usegray"
+
+        else
+
+          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_usegray_${XVID[i]}_${side}_${label}" -b y \
+             bl truthlist.txt autolist.txt $label \
+             $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_usegray \
+             -g graylist.txt -p $POSTLIST
+
+        fi
+
+        if [[ $ASHS_SKIP && $(ashs_check_bl_result adaboost_nogray-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
+
+          echo "Skipping training for ${XVID[i]}_${side} label $label adaboost_nogray"
+
+        else
+
+          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_nogray_${XVID[i]}_${side}_${label}" -b y \
+             bl truthlist.txt autolist.txt $label \
+             $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_nogray \
+             -p $POSTLIST
+
+        fi
 
       done
 

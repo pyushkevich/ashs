@@ -59,7 +59,7 @@ LABIDS=($(cat $TMPDIR/labels.txt | awk '{print $1}'))
 LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
 
 # Names of segmentations
-for segtype in corr heur; do
+for segtype in raw heur corr_usegray; do
   for side in left right; do
 
     SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz

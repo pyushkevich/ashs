@@ -31,6 +31,7 @@ id=${1?}
 TRAIN=${2?}
 FNOUT=${3?}
 side=${4?}
+POSTERIOR=${5?}
 
 
 source ${ASHS_ROOT?}/bin/ashs_lib.sh
@@ -45,8 +46,9 @@ cat <<-BLOCK1
 	Subject: ${id?}
   Train Set: ${TRAIN?}
   Output: ${FNOUT?}
+  Posteriors: ${POSTERIOR?}
 	Side: ${side?}
 BLOCK1
 
 # Just call the label fusion library command
-ashs_label_fusion $id $FNOUT
+ashs_label_fusion $id $FNOUT $POSTERIOR
