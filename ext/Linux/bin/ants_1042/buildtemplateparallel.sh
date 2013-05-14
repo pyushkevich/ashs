@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 VERSION="0.0.13"
 

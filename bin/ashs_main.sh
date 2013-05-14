@@ -101,8 +101,8 @@ while getopts "g:f:w:s:a:q:I:C:r:NTdhVQ" opt; do
   case $opt in
 
     a) ATLAS=$(readlink -f $OPTARG);;
-    g) ASHS_MPRAGE=$OPTARG;;
-    f) ASHS_TSE=$OPTARG;;
+    g) ASHS_MPRAGE=$(readlink -f $OPTARG);;
+    f) ASHS_TSE=$(readlink -f $OPTARG);;
     w) ASHS_WORK=$(readlink -f $OPTARG);;
     s) STAGE_SPEC=$OPTARG;;
     N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;

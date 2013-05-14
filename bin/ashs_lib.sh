@@ -410,8 +410,12 @@ BLOCK1
   cd $ASHS_WORK/atlas/$id
 
   # Perform label fusion using the atlases
-  ATLASES=$(echo $TRAIN | sed -e "s|\w*|pairwise/tseg_${side}_train&/atlas_to_native.nii.gz|g")
-  ATLSEGS=$(echo $TRAIN | sed -e "s|\w*|pairwise/tseg_${side}_train&/atlas_to_native_segvote.nii.gz|g")
+  local ATLASES=""
+  local ATLSEGS=""
+  for id in $TRAIN; do
+    ATLASES="$ATLASES pairwise/tseg_${side}_train${id}/atlas_to_native.nii.gz"
+    ATLSEGS="$ATLSEGS pairwise/tseg_${side}_train${id}/atlas_to_native_segvote.nii.gz"
+  done
 
   # TODO: should we address the problem of missing data? We are expecting 100% of the registrations
   # to succeed, and that might not be realistic. We could include only the files that actually exist,
@@ -591,6 +595,7 @@ function ashs_atlas_build_template()
     pushd mask_${side}
 
     # Warp each segmentation
+    CMDLINE=""
     for id in ${ATLAS_ID[*]}; do
 
       WarpImageMultiTransform 3 $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
@@ -598,10 +603,11 @@ function ashs_atlas_build_template()
         ../atlas${id}_mprageWarp.nii.gz ../atlas${id}_mprageAffine.txt \
         $ASHS_WORK/atlas/${id}/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt --use-NN
 
+      CMDLINE="$CMDLINE ${id}_seg_${side}.nii.gz"
     done
 
     # Average the segmentations and create a target ROI with desired resolution
-    c3d $(echo ${ATLAS_ID[*]} | sed -e "s|\w*|&_seg_${side}.nii.gz|g") \
+    c3d $CMDLINE \
       -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
       -o meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
       -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \

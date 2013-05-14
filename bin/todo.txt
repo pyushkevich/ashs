@@ -1,0 +1,37 @@
+ADD THIS QC STUFF
+ 1194  for fn in $(ls); do c3d $fn/mprage_to_chunktemp_left.nii.gz -slice y 50% -flip xy -type uchar -stretch 0 98% 0 255 -clip 0 255 -o /tmp/${fn}.png; done 
+ 1195  montage -label '%f' /tmp/train0*.png -geometry+5+5 /tmp/montrain.png
+ 1196  montage -label '%f' /tmp/train0*.png -geometry +5+5 /tmp/montrain.png
+ 1197  eog /tmp/montrain.png
+ 1198  bg
+ 1199  ls
+ 1200  ls train027/
+ 1201  for fn in $(ls); do c3d $fn/tse_to_chunktemp_left.nii.gz -slice y 50% -flip xy -type uchar -stretch 0 98% 0 255 -clip 0 255 -o /tmp/${fn}.png; done 
+ 1202  montage -label '%f' /tmp/train0*.png -geometry +5+5 /tmp/montrain_t2.png
+
+ADD THIS STATS CODE
+#!/bin/bash - 
+mkdir -p stats
+for mode in multiatlas bootstrap; do
+  for kind in raw heur corr_nogray corr_usegray vsref_heur vsref_corr_nogray
+vsref_corr_usegray; do
+    for side in left right; do
+      WHAT=stats_${mode}_${kind}_${side}
+      for fn in $(ls | grep xval00..); do
+
+        c3d $fn/test/*/${mode}/fusion/lfseg_${kind}_${side}.nii.gz
+$fn/test/*/refseg/refseg_native_chunk_${side}.nii.gz -label-overlap \
+          | tail -n +6 > /tmp/stat.txt
+
+        ROW=$(for ((i=1;i<=8;i++)); do cat /tmp/stat.txt | awk "BEGIN {k=0}
+\$1==$i {k=\$4} END {printf \"%8.4f\",k}"; done)
+
+        echo $ROW
+
+      done > stats/$WHAT.txt 
+      echo $WHAT $(cat stats/$WHAT.txt | awk '{for (i=1;i<=NF;i++) sum[i]+=$i}
+END {for (i=1;i<=NF;i++) printf "%8.4f ",sum[i]/NR; printf "\n"}')
+    done
+  done
+done
+
