@@ -47,7 +47,7 @@ ASHS_LABELFILE=$ASHS_ATLAS/snap/snaplabels.txt
 # Generate the 'final' segmentations
 for side in left right; do
 
-  for segtype in heur corr; do
+  for segtype in heur corr_usegray corr_nogray; do
 
     c3d $ASHS_WORK/tse.nii.gz $WSUB/lfseg_${segtype}_${side}.nii.gz \
       -int 0 -reslice-identity -type ushort \
@@ -60,7 +60,7 @@ done
 for side in left right; do
 
 	SMASV=$WSUB/lfseg_heur_${side}.nii.gz
-	SBC=$WSUB/lfseg_corr_${side}.nii.gz
+	SBC=$WSUB/lfseg_corr_usegray_${side}.nii.gz
 
 	if [[ -f $SMASV && -f $SBC ]]; then
 

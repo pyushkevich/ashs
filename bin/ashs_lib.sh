@@ -996,7 +996,7 @@ function ashs_atlas_adaboost_train()
 
         else
 
-          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_usegray_${XVID[i]}_${side}_${label}" -b y \
+          qsub $QOPTS $ASHS_EC_QSUB_EXTRA_OPTIONS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_usegray_${XVID[i]}_${side}_${label}" -b y \
              bl truthlist.txt autolist.txt $label \
              $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_usegray \
              -g graylist.txt -p $POSTLIST
@@ -1009,7 +1009,7 @@ function ashs_atlas_adaboost_train()
 
         else
 
-          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_nogray_${XVID[i]}_${side}_${label}" -b y \
+          qsub $QOPTS $ASHS_EC_QSUB_EXTRA_OPTIONS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_nogray_${XVID[i]}_${side}_${label}" -b y \
              bl truthlist.txt autolist.txt $label \
              $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_nogray \
              -p $POSTLIST
