@@ -894,6 +894,58 @@ function ashs_check_bl_result()
   fi
 }
 
+
+# This function runs the training for a single label in a training directory
+function ashs_bl_train_qsub()
+{
+  local POSTLIST label id mode xvid side GRAYLIST
+  xvid=${1?}
+  side=${2?}
+  label=${3?}
+
+  # Generate the posterior list for this label
+  POSTLIST=$(printf posteriorlist_%03d.txt $label)
+  rm -rf $POSTLIST
+  for id in $(cat trainids.txt); do
+    echo $(printf loo_posterior_${id}_${side}_%03d.nii.gz $label) >> $POSTLIST
+  done
+
+  # We will generate two sets of training data: one with the grayscale information and
+  # another that only uses the posterior maps, and no grayscale information
+  for mode in usegray nogray; do
+
+    # The extra parameter to bl
+    if [[ $mode = "usegray" ]]; then GRAYLIST="-g graylist.txt"; else GRAYLIST=""; fi
+
+    # Check if the training results already exist
+    if [[ $ASHS_SKIP && $(ashs_check_bl_result adaboost_${mode}-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
+
+      echo "Skipping training for ${xvid}_${side} label $label adaboost_${mode}"
+
+    else
+
+      # Sampling factor used for dry runs
+      local DRYFRAC=0.01
+
+      # Execute a dry run, where we only check the number of samples at the maximum sampling rate
+      NSAM=$(bl truthlist.txt autolist.txt $label \
+        $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $DRYFRAC 0 adaboost_dryrun \
+        $GRAYLIST -p $POSTLIST \
+          | grep 'of training data' | tail -n 1 | awk -F '[: ]' '{print $13}')
+
+      # Compute the fraction needed to obtain the desired number of samples per image
+      local FRAC=$(echo 0 | awk "{ k=$NSAM / ($ASHS_EC_TARGET_SAMPLES * $DRYFRAC); p=(k==int(k) ? k : 1 + int(k)); print p < 1 ? 1 : 1 / p }")
+
+      # Now run for real
+      bl truthlist.txt autolist.txt $label \
+        $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_${mode} \
+          $GRAYLIST -p $POSTLIST
+
+    fi
+
+  done
+}
+
 # Top level code for AdaBoost training and cross-validation
 function ashs_atlas_adaboost_train()
 {
@@ -959,11 +1011,12 @@ function ashs_atlas_adaboost_train()
       pushd $WTRAIN
 
       # Create text files for input to bl
-      rm -rf graylist.txt autolist.txt truthlist.txt
+      rm -rf graylist.txt autolist.txt truthlist.txt trainids.txt
       for id in ${XV_TRAIN[i]}; do
         echo $ASHS_WORK/atlas/$id/tse_native_chunk_${side}.nii.gz >> graylist.txt
         echo $ASHS_WORK/atlas/$id/tse_native_chunk_${side}_seg.nii.gz >> truthlist.txt
         echo loo_seg_${id}_${side}.nii.gz >> autolist.txt
+        echo $id >> trainids.txt
       done
 
       # Count the unique labels in the dataset. Note that for label 0 we perform the dilation to estimate
@@ -975,46 +1028,8 @@ function ashs_atlas_adaboost_train()
       # For each label, launch the training job. The number of samples is scaled to have roughly 1000 per label
       for label in $(cat counts.txt | awk '{print $1}'); do
 
-        q=$ASHS_EC_TARGET_SAMPLES
-        FRAC=$(cat counts.txt | awk "\$1==$label {print \$2 < $q ? 1 : $q/\$2}")
-
-        # Generate the posterior lists
-        POSTLIST=$(printf posteriorlist_%03d.txt $label)
-        rm -rf $POSTLIST
-        for id in ${XV_TRAIN[i]}; do
-          echo $(printf loo_posterior_${id}_${side}_%03d.nii.gz $label) >> $POSTLIST
-        done
-
-        # We will generate two sets of training data: one with the grayscale information and
-        # another that only uses the posterior maps, and no grayscale information
-        ### echo "Label $label fraction $FRAC"
-
-        # Check if the training results already exist
-        if [[ $ASHS_SKIP && $(ashs_check_bl_result adaboost_usegray-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
-
-          echo "Skipping training for ${XVID[i]}_${side} label $label adaboost_usegray"
-
-        else
-
-          qsub $QOPTS $ASHS_EC_QSUB_EXTRA_OPTIONS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_usegray_${XVID[i]}_${side}_${label}" -b y \
-             bl truthlist.txt autolist.txt $label \
-             $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_usegray \
-             -g graylist.txt -p $POSTLIST
-
-        fi
-
-        if [[ $ASHS_SKIP && $(ashs_check_bl_result adaboost_nogray-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
-
-          echo "Skipping training for ${XVID[i]}_${side} label $label adaboost_nogray"
-
-        else
-
-          qsub $QOPTS $ASHS_EC_QSUB_EXTRA_OPTIONS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_nogray_${XVID[i]}_${side}_${label}" -b y \
-             bl truthlist.txt autolist.txt $label \
-             $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_nogray \
-             -p $POSTLIST
-
-        fi
+        qsub $QOPTS $ASHS_EC_QSUB_EXTRA_OPTIONS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_${XVID[i]}_${side}_${label}" \
+           $ASHS_ROOT/bin/ashs_atlas_bl_qsub.sh ${XVID[i]} $side $label
 
       done
 
