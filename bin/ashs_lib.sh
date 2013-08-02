@@ -494,21 +494,20 @@ BLOCK1
 		cp -a $TDIR/fusion/lfseg_raw_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
 	fi
 
-	# Perform AdaBoost correction
-  ### Old code before posteriors 
-	### sa tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz \
-	### 	$ASHS_ATLAS/adaboost/${side}/adaboost \
-	###  	$TDIR/fusion/lfseg_corr_${side}.nii.gz $EXCLCMD
-	sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
-		$ASHS_ATLAS/adaboost/${side}/adaboost_usegray \
-		$TDIR/fusion/lfseg_corr_usegray_${side}.nii.gz $EXCLCMD \
-    -g tse_native_chunk_${side}.nii.gz -p $TDIR/fusion/posterior_${side}_%03d.nii.gz
+	# Perform AdaBoost correction. In addition to outputing the corrected segmentation,
+  # we output posterior probabilities for each label. 
+  for kind in usegray nogray; do
 
-	sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
-		$ASHS_ATLAS/adaboost/${side}/adaboost_nogray \
-		$TDIR/fusion/lfseg_corr_nogray_${side}.nii.gz $EXCLCMD \
-    -p $TDIR/fusion/posterior_${side}_%03d.nii.gz
+    # The part of the command that's different for the usegray and nogray modes
+    if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD="" fi
 
+    sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
+      $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
+      $TDIR/fusion/lfseg_corr_${kind}_${side}.nii.gz $EXCLCMD \
+      $GRAYCMD -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
+      -op $TDIR/fusion/posterior_corr_${kind}_${side}_%03d.nii.gz
+
+  done
   
   # If there are reference segs, we have to repeat this again, but with heuristics from 
   # the reference segmentations. This allows us to make a more fair comparison
@@ -526,15 +525,18 @@ BLOCK1
 			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz
 
     # Rerun AdaBoost
-    sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
-      $ASHS_ATLAS/adaboost/${side}/adaboost_usegray \
-      $TDIR/fusion/lfseg_vsref_corr_usegray_${side}.nii.gz $EXCLCMD \
-      -g tse_native_chunk_${side}.nii.gz -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz
+    for kind in usegray nogray; do
 
-    sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
-      $ASHS_ATLAS/adaboost/${side}/adaboost_nogray \
-      $TDIR/fusion/lfseg_vsref_corr_nogray_${side}.nii.gz $EXCLCMD \
-      -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz
+      # The part of the command that's different for the usegray and nogray modes
+      if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD="" fi
+
+      sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
+        $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
+        $TDIR/fusion/lfseg_vsref_corr_${kind}_${side}.nii.gz $EXCLCMD \
+        $GRAYCMD -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz \
+        -op $TDIR/fusion/posterior_corr_${kind}_vsref_${side}_%03d.nii.gz
+
+    done
 
   fi
 }
