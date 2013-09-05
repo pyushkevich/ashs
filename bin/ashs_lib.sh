@@ -499,7 +499,7 @@ BLOCK1
   for kind in usegray nogray; do
 
     # The part of the command that's different for the usegray and nogray modes
-    if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD="" fi
+    if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD=""; fi
 
     sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
       $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
@@ -528,7 +528,7 @@ BLOCK1
     for kind in usegray nogray; do
 
       # The part of the command that's different for the usegray and nogray modes
-      if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD="" fi
+      if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD=""; fi
 
       sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
         $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \

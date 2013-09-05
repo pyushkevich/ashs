@@ -93,12 +93,16 @@ c3d $WREG/refspace.nii.gz  $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 \
 	-o $TMPDIR/mask.nii.gz
 
 # Run ANTS in this space
-ANTS 3 \
-  -x $TMPDIR/mask.nii.gz \
-	-m PR[$TMPDIR/fixed_hw.nii.gz,$TMPDIR/moving_hw.nii.gz,1,4] \
-	-o $WREG/antsreg.nii.gz \
-	-i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v \
-	--continue-affine false
+if [[ -f $WREG/antsregWarp.nii.gz && $ASHS_SKIP ]]; then
+  echo "Skipping ANTS registration"
+else
+  ANTS 3 \
+    -x $TMPDIR/mask.nii.gz \
+    -m PR[$TMPDIR/fixed_hw.nii.gz,$TMPDIR/moving_hw.nii.gz,1,4] \
+    -o $WREG/antsreg.nii.gz \
+    -i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v \
+    --continue-affine false
+fi
 
 # Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
 # Since we only care about the region around the segmentation, we use tse_native_chunk
