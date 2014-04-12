@@ -102,6 +102,9 @@ else
     -o $WREG/antsreg.nii.gz \
     -i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v \
     --continue-affine false
+
+  shrink_warp 3 $WREG/antsregWarp.nii.gz $WREG/antsregWarp.nii.gz
+  shrink_warp 3 $WREG/antsregInverseWarp.nii.gz $WREG/antsregInverseWarp.nii.gz
 fi
 
 # Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.

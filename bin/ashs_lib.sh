@@ -266,6 +266,10 @@ function ashs_ants_pairwise()
       -x tse_to_chunktemp_${side}_regmask.nii.gz $ANTS_METRIC_TERM -o $WREG/antsreg.nii.gz \
 			-i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v
 
+    # Compress the warps
+    shrink_warp 3 $WREG/antsregWarp.nii.gz $WREG/antsregWarp.nii.gz
+    shrink_warp 3 $WREG/antsregInverseWarp.nii.gz $WREG/antsregInverseWarp.nii.gz
+
   fi
 
 	# Some things are in different locations depending on if this is atlas mode or not
@@ -409,16 +413,18 @@ BLOCK1
   # Go to the atlas directory
   cd $ASHS_WORK/atlas/$id
 
-  # Perform label fusion using the atlases
+  # Perform label fusion using the atlases. We check for the existence of the atlases
+  # so if one or two of the registrations failed, the whole process does not crash
   local ATLASES=""
   local ATLSEGS=""
   for id in $TRAIN; do
-    ATLASES="$ATLASES pairwise/tseg_${side}_train${id}/atlas_to_native.nii.gz"
-    ATLSEGS="$ATLSEGS pairwise/tseg_${side}_train${id}/atlas_to_native_segvote.nii.gz"
+    local ACAND=pairwise/tseg_${side}_train${id}/atlas_to_native.nii.gz
+    local SCAND=pairwise/tseg_${side}_train${id}/atlas_to_native_segvote.nii.gz
+    if [[ -f $ACAND && -f $SCAND ]]; then
+      ATLASES="$ATLASES $ACAND"
+      ATLSEGS="$ATLSEGS $SCAND"
+    fi
   done
-
-  # TODO: should we address the problem of missing data? We are expecting 100% of the registrations
-  # to succeed, and that might not be realistic. We could include only the files that actually exist,
 
   # If there are heuristics, make sure they are supplied to the LF program
   if [[ $ASHS_HEURISTICS ]]; then
@@ -583,6 +589,12 @@ function ashs_atlas_build_template()
   else
     export ANTSPATH=$ASHS_ANTS/
     buildtemplateparallel.sh -d 3 -o atlas -m ${ASHS_TEMPLATE_ANTS_ITER?} -r 1 -t GR -s CC $CMDLINE
+    
+    # Compress the warps
+    for id in ${ATLAS_ID[*]}; do
+      shrink_warp 3 atlas${id}_mprageWarp.nii.gz atlas${id}_mprageWarp.nii.gz
+      shrink_warp 3 atlas${id}_mprageInverseWarp.nii.gz atlas${id}_mprageInverseWarp.nii.gz
+    done
   fi
 
   # Copy the template into the final folder

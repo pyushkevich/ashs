@@ -120,6 +120,9 @@ else
       -a $WAFF/t1_to_template_ITK.txt \
       -i ${ASHS_TEMPLATE_ANTS_ITER} -v | tee $WANT/ants_output.txt
   
+    shrink_warp 3 $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempWarp.nii.gz
+    shrink_warp 3 $WANT/ants_t1_to_tempInverseWarp.nii.gz $WANT/ants_t1_to_tempInverseWarp.nii.gz
+
 fi
 
 # Apply the transformation to the T1 image and to the T1 segmentation
