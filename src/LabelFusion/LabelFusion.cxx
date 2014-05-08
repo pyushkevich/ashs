@@ -36,6 +36,7 @@
 #include "WeightedVotingLabelFusionImageFilter.h"
 #include "itkImageFileReader.h"
 #include "itkImageFileWriter.h"
+#include "itkImageRegionIteratorWithIndex.h"
 #include <iostream>
 
 #include "WeightedVotingLabelFusionImageFilter.txx"
