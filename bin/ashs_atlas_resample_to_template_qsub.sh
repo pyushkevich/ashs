@@ -51,11 +51,25 @@ for what in Warp.nii.gz InverseWarp.nii.gz Affine.txt; do
 done
 
 # Histogram match the images to a reference image (used later down the road, but better to do it now)
-c3d $ASHS_WORK/final/ref_hm/ref_tse.nii.gz tse.nii.gz \
-  -histmatch ${ASHS_HISTMATCH_CONTROLS} -o tse_histmatch.nii.gz
+# If the number of control points is 0, we don't do histogram matching. Instead, we link the histmatch
+# file to the original file
+if [[ $ASHS_SKIP && \
+      -f tse_histmatch.nii.gz && \
+      -f mprage_histmatch.nii.gz ]]
+then 
+  echo "Skipping histogram matching"
+else
+  if [[ ${ASHS_HISTMATCH_CONTROLS} -gt 0 ]]; then
+    c3d $ASHS_WORK/final/ref_hm/ref_tse.nii.gz tse.nii.gz \
+      -histmatch ${ASHS_HISTMATCH_CONTROLS} -o tse_histmatch.nii.gz
 
-c3d $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz mprage.nii.gz \
-  -histmatch ${ASHS_HISTMATCH_CONTROLS} -o mprage_histmatch.nii.gz
+    c3d $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz mprage.nii.gz \
+      -histmatch ${ASHS_HISTMATCH_CONTROLS} -o mprage_histmatch.nii.gz
+  else
+    ln -sf tse.nii.gz tse_histmatch.nii.gz
+    ln -sf mprage.nii.gz mprage_histmatch.nii.gz
+  fi
+fi
 
 # Reslice the atlas to the template
 ashs_reslice_to_template . $ASHS_WORK/final

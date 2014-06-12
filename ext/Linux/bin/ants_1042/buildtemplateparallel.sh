@@ -739,7 +739,9 @@ fi
 
 # System specific queue options, eg "-q name" to submit to a specific queue
 # It can be set to an empty string if you do not need any special cluster options
-QSUBOPTS="" # EDIT THIS
+
+# Edited by Paul - allows QSUB opts to be passed on to this script
+QSUBOPTS=$ANTS_QSUB_OPTS
 
 # Test availability of helper scripts. 
 # No need to test this more than once. Can reside outside of the main loop.

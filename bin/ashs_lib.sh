@@ -238,8 +238,11 @@ function ashs_ants_pairwise()
 	CHECK_ashs_ants_pairwise
 
   # Run ANTS with current image as fixed, training image as moving
-  if [[ $ASHS_SKIP_ANTS && -f $WREG/antsregAffine.txt \
-    && -f $WREG/antsregWarp.nii.gz && -f $WREG/antsregInverseWarp.nii.gz ]]; then
+  if [[ $ASHS_SKIP_ANTS && \
+        -f $WREG/antsregAffine.txt && \
+        -f $WREG/antsregWarp.nii.gz && \
+        -f $WREG/antsregInverseWarp.nii.gz ]]
+  then
 
     # If registration exists, skip this step
     echo "Skipping ANTS registration $side/$tid"
@@ -272,60 +275,74 @@ function ashs_ants_pairwise()
 
   fi
 
+  # I think we want to use the full TSE so we don't get confusion in regions
+  # where the native chunks don't overlap
+  local ATLAS_TSE=$TDIR/tse.nii.gz
+
+  # But we certainly don't need to use the full segmentation! It's zero outside
+  # of the native chunk anyway...
+  local ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
+
 	# Some things are in different locations depending on if this is atlas mode or not
 	if [[ $ATLAS_MODE -eq 1 ]]; then
-		local ATLAS_TSE=$TDIR/tse.nii.gz
-		local ATLAS_SEG=$TDIR/seg_${side}.nii.gz
 		local ATLAS_ANTS_WARP=$TDIR/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz
 		local ATLAS_ANTS_AFFINE=$TDIR/ants_t1_to_temp/ants_t1_to_tempAffine.txt
 		local ATLAS_FLIRT=$TDIR/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt
 	else
-		# Fix later to use chunks
-		# local ATLAS_TSE=$TDIR/tse_native_chunk_${side}.nii.gz
-		local ATLAS_TSE=$TDIR/tse.nii.gz
-		# local ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
-		local ATLAS_SEG=$TDIR/seg_${side}.nii.gz
 		local ATLAS_ANTS_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
 		local ATLAS_ANTS_AFFINE=$TDIR/ants_t1_to_tempAffine.txt
 		local ATLAS_FLIRT=$TDIR/flirt_t2_to_t1_ITK.txt
 	fi
 
-	# Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
-	# Since we only care about the region around the segmentation, we use tse_native_chunk
-	WarpImageMultiTransform 3 $ATLAS_TSE \
-		$WREG/atlas_to_native.nii.gz \
-		-R tse_native_chunk_${side}.nii.gz \
-		-i flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
-		-i ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-		ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz \
-		$WREG/antsregWarp.nii.gz \
-		$WREG/antsregAffine.txt \
-		$ATLAS_ANTS_WARP $ATLAS_ANTS_AFFINE $ATLAS_FLIRT
+  # Reslice the atlas into target space
+  if [[ $ASHS_SKIP && \
+        -f $WREG/atlas_to_native.nii.gz &&
+        -f $WREG/atlas_to_native_segvote.nii.gz ]]
+  then
 
-	# Warp the segmentation labels the same way. This should work with WarpImageMultiTransform --use-ML
-	# but for some reason that is still broken. Let's use the old way
-	local LSET=($(c3d $ATLAS_SEG -dup -lstat | awk 'NR > 1 {print $1}'))
+    echo "Skipping reslicing into native space"
+  
+  else
 
-	for ((i=0; i < ${#LSET[*]}; i++)); do
+    # Create a composite warp from atlas to target image (temporary)
+    /usr/bin/time -f "ComposeMultiTransform: walltime=%E, memory=%M" \
+      ComposeMultiTransform 3 \
+        $TMPDIR/fullWarp.nii \
+        -R tse_native_chunk_${side}.nii.gz \
+        -i flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
+        -i ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+        ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz \
+        $WREG/antsregWarp.nii.gz \
+        $WREG/antsregAffine.txt \
+        $ATLAS_ANTS_WARP $ATLAS_ANTS_AFFINE $ATLAS_FLIRT
 
-		local LID=$(printf '%03d' $i)
-		c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth $ASHS_LABEL_SMOOTHING -o $TMPDIR/label_${LID}.nii.gz
+    # Apply the composite warp to the tse image
+    /usr/bin/time -f "Warp TSE: walltime=%E, memory=%M" \
+      WarpImageMultiTransform 3 $ATLAS_TSE \
+        $WREG/atlas_to_native.nii.gz \
+        $TMPDIR/fullWarp.nii
 
-		WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
-			$TMPDIR/label_${LID}_warp.nii.gz \
-			-R tse_native_chunk_${side}.nii.gz \
-			-i flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
-			-i ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-			ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz \
-			$WREG/antsregWarp.nii.gz \
-			$WREG/antsregAffine.txt \
-			$ATLAS_ANTS_WARP $ATLAS_ANTS_AFFINE $ATLAS_FLIRT
+    # Warp the segmentation labels the same way. This should work with WarpImageMultiTransform --use-ML
+    # but for some reason that is still broken. Let's use the old way
+    local LSET=($(c3d $ATLAS_SEG -dup -lstat | awk 'NR > 1 {print $1}'))
 
-	done
+    for ((i=0; i < ${#LSET[*]}; i++)); do
 
-	# Perform voting using replacement rules
-	local RULES=$(for ((i=0; i < ${#LSET[*]}; i++)); do echo $i ${LSET[i]}; done)
-	c3d $TMPDIR/label_*_warp.nii.gz -vote -replace $RULES -o $WREG/atlas_to_native_segvote.nii.gz
+      local LID=$(printf '%03d' $i)
+      c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth $ASHS_LABEL_SMOOTHING -o $TMPDIR/label_${LID}.nii.gz
+
+      /usr/bin/time -f "Warp label ${LID}: walltime=%E, memory=%M" \
+        WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
+          $TMPDIR/label_${LID}_warp.nii.gz \
+          $TMPDIR/fullWarp.nii
+
+    done
+
+    # Perform voting using replacement rules
+    local RULES=$(for ((i=0; i < ${#LSET[*]}; i++)); do echo $i ${LSET[i]}; done)
+    c3d $TMPDIR/label_*_warp.nii.gz -vote -replace $RULES -o $WREG/atlas_to_native_segvote.nii.gz
+
+  fi
 
 	# In tidy mode, we can clean up after this step
 	if [[ $ASHS_TIDY ]]; then
@@ -348,44 +365,61 @@ function ashs_reslice_to_template()
   # Apply the transformation to the masks
   for side in left right; do
 
-    # Define the reference space
-    REFSPACE=$ATLAS/template/refspace_${side}.nii.gz
+    # Only generate these targets if needed
+    if [[ $ASHS_SKIP && \
+          -f $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz && \
+          -f $ASHS_WORK/mprage_to_chunktemp_${side}.nii.gz && \
+          -f $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz && \
+          -f $ASHS_WORK/tse_native_chunk_${side}.nii.gz ]]
+    then
+      echo "Skipping reslicing of data to template and native ROI"
+    else
 
-    # Map the image to the target space
-    WarpImageMultiTransform 3 $ASHS_WORK/tse_histmatch.nii.gz \
-      $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz -R $REFSPACE \
-      $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
+      # Define the reference space
+      REFSPACE=$ATLAS/template/refspace_${side}.nii.gz
 
-    # Map the image to the target space
-    WarpImageMultiTransform 3 $ASHS_WORK/mprage_histmatch.nii.gz \
-      $ASHS_WORK/mprage_to_chunktemp_${side}.nii.gz -R $REFSPACE \
-      $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt 
+      # Map the image to the target space
+      WarpImageMultiTransform 3 $ASHS_WORK/tse_histmatch.nii.gz \
+        $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz -R $REFSPACE \
+        $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
 
-    # Create a custom mask for the ASHS_TSE image
-    c3d $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz -verbose -pim r -thresh 0.001% inf 1 0 \
-      -erode 0 4x4x4 $REFSPACE -times -type uchar -o $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz
+      # Map the image to the target space
+      WarpImageMultiTransform 3 $ASHS_WORK/mprage_histmatch.nii.gz \
+        $ASHS_WORK/mprage_to_chunktemp_${side}.nii.gz -R $REFSPACE \
+        $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt 
 
-    # Create a combined warp from chunk template to T2 native space - and back
-    ComposeMultiTransform 3 $TMPDIR/ants_t2_to_temp_fullWarp.nii.gz -R $REFSPACE \
-      $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
+      # Create a custom mask for the ASHS_TSE image
+      c3d $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz -verbose -pim r -thresh 0.001% inf 1 0 \
+        -erode 0 4x4x4 $REFSPACE -times -type uchar -o $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz
 
-    ComposeMultiTransform 3 $TMPDIR/ants_t2_to_temp_fullInverseWarp.nii.gz \
-      -R $ASHS_WORK/tse.nii.gz -i $WFSL/flirt_t2_to_t1_ITK.txt \
-      -i $WANT/ants_t1_to_tempAffine.txt $WANT/ants_t1_to_tempInverseWarp.nii.gz
+      # Create a combined warp from chunk template to T2 native space - and back
+      ComposeMultiTransform 3 $TMPDIR/ants_t2_to_temp_fullWarp.nii.gz -R $REFSPACE \
+        $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
 
-    # Create a native-space chunk of the ASHS_TSE image 
-    WarpImageMultiTransform 3 $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz \
-      $TMPDIR/natmask.nii.gz -R $ASHS_WORK/tse.nii.gz $TMPDIR/ants_t2_to_temp_fullInverseWarp.nii.gz
+      ComposeMultiTransform 3 $TMPDIR/ants_t2_to_temp_fullInverseWarp.nii.gz \
+        -R $ASHS_WORK/tse.nii.gz -i $WFSL/flirt_t2_to_t1_ITK.txt \
+        -i $WANT/ants_t1_to_tempAffine.txt $WANT/ants_t1_to_tempInverseWarp.nii.gz
 
-    # Notice that we pad a little in the z-direction. This is to make sure that we get all the 
-    # slices in the image, otherwise there will be problems with the voting code.
-    c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox $ASHS_WORK/tse.nii.gz \
-      -reslice-identity -o $ASHS_WORK/tse_native_chunk_${side}.nii.gz 
+      # Create a native-space chunk of the ASHS_TSE image 
+      WarpImageMultiTransform 3 $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz \
+        $TMPDIR/natmask.nii.gz -R $ASHS_WORK/tse.nii.gz $TMPDIR/ants_t2_to_temp_fullInverseWarp.nii.gz
+
+      # Notice that we pad a little in the z-direction. This is to make sure that we get all the 
+      # slices in the image, otherwise there will be problems with the voting code.
+      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox $ASHS_WORK/tse.nii.gz \
+        -reslice-identity -o $ASHS_WORK/tse_native_chunk_${side}.nii.gz 
+
+    fi
 
     # We also resample the segmentation (if it exists, i.e., training mode)
     if [[ -f $ASHS_WORK/seg_${side}.nii.gz ]]; then
-      c3d $ASHS_WORK/tse_native_chunk_${side}.nii.gz $ASHS_WORK/seg_${side}.nii.gz \
-        -int 0 -reslice-identity -o $ASHS_WORK/tse_native_chunk_${side}_seg.nii.gz
+      if [[ $ASHS_SKIP && -f $ASHS_WORK/tse_native_chunk_${side}_seg.nii.gz ]]
+      then
+        echo "Skipping reslicing the segmentation to native space"
+      else
+        c3d $ASHS_WORK/tse_native_chunk_${side}.nii.gz $ASHS_WORK/seg_${side}.nii.gz \
+          -int 0 -reslice-identity -o $ASHS_WORK/tse_native_chunk_${side}_seg.nii.gz
+      fi
     fi
 
   done
@@ -434,11 +468,12 @@ BLOCK1
   fi
 
   # Run the label fusion program
-  label_fusion 3 -g $ATLASES -l $ATLSEGS \
-    -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
-    $EXCLCMD \
-    -p ${POSTERIOR} \
-    tse_native_chunk_${side}.nii.gz $FNOUT
+  /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
+    label_fusion 3 -g $ATLASES -l $ATLSEGS \
+      -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+      $EXCLCMD \
+      -p ${POSTERIOR} \
+      tse_native_chunk_${side}.nii.gz $FNOUT
 }
 
 # This version of the function is called in ashs_main, where there are no
@@ -588,6 +623,7 @@ function ashs_atlas_build_template()
     echo "Skipping template building"
   else
     export ANTSPATH=$ASHS_ANTS/
+    export ANTS_QSUB_OPTS=$QOPTS
     buildtemplateparallel.sh -d 3 -o atlas -m ${ASHS_TEMPLATE_ANTS_ITER?} -r 1 -t GR -s CC $CMDLINE
     
     # Compress the warps
@@ -595,52 +631,69 @@ function ashs_atlas_build_template()
       shrink_warp 3 atlas${id}_mprageWarp.nii.gz atlas${id}_mprageWarp.nii.gz
       shrink_warp 3 atlas${id}_mprageInverseWarp.nii.gz atlas${id}_mprageInverseWarp.nii.gz
     done
-  fi
 
-  # Copy the template into the final folder
-  mkdir -p $ASHS_WORK/final/template/
-  cp -av atlastemplate.nii.gz  $ASHS_WORK/final/template/template.nii.gz
+    # Copy the template into the final folder
+    mkdir -p $ASHS_WORK/final/template/
+    cp -av atlastemplate.nii.gz  $ASHS_WORK/final/template/template.nii.gz
+
+  fi
 
   # We should now map everyone's segmentation into the template to build a mask
   for side in left right; do
 
-    # Create a working directory
-    mkdir -p mask_${side}
-    pushd mask_${side}
+    if [[ $ASHS_SKIP_ANTS && \
+          -f $ASHS_WORK/final/template/refspace_meanseg_${side}.nii.gz && \
+          -f $ASHS_WORK/final/template/refspace_mprage_${side}.nii.gz ]]
+    then
+      echo "Skipping template ROI definition"
+    else
 
-    # Warp each segmentation
-    CMDLINE=""
-    for id in ${ATLAS_ID[*]}; do
+      # Create a working directory
+      mkdir -p mask_${side}
+      pushd mask_${side}
 
-      WarpImageMultiTransform 3 $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
-        ${id}_seg_${side}.nii.gz -R ../atlastemplate.nii.gz \
-        ../atlas${id}_mprageWarp.nii.gz ../atlas${id}_mprageAffine.txt \
-        $ASHS_WORK/atlas/${id}/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt --use-NN
+      # Warp each segmentation
+      CMDLINE=""
+      for id in ${ATLAS_ID[*]}; do
 
-      CMDLINE="$CMDLINE ${id}_seg_${side}.nii.gz"
-    done
+        WarpImageMultiTransform 3 $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
+          ${id}_seg_${side}.nii.gz -R ../atlastemplate.nii.gz \
+          ../atlas${id}_mprageWarp.nii.gz ../atlas${id}_mprageAffine.txt \
+          $ASHS_WORK/atlas/${id}/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt --use-NN
 
-    # Average the segmentations and create a target ROI with desired resolution
-    c3d $CMDLINE \
-      -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
-      -o meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
-      -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
-      -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \
-      -o refspace_${side}.nii.gz \
-      ../atlastemplate.nii.gz -reslice-identity -o refspace_mprage_${side}.nii.gz \
-      -push M -reslice-identity -thresh 0.5 inf 1 0 -o refspace_meanseg_${side}.nii.gz
+        CMDLINE="$CMDLINE ${id}_seg_${side}.nii.gz"
+      done
 
-    cp -a refspace*${side}.nii.gz $ASHS_WORK/final/template/
+      # Average the segmentations and create a target ROI with desired resolution
+      c3d $CMDLINE \
+        -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
+        -o meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
+        -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
+        -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \
+        -o refspace_${side}.nii.gz \
+        ../atlastemplate.nii.gz -reslice-identity -o refspace_mprage_${side}.nii.gz \
+        -push M -reslice-identity -thresh 0.5 inf 1 0 -o refspace_meanseg_${side}.nii.gz
 
-    popd
+      cp -a refspace*${side}.nii.gz $ASHS_WORK/final/template/
+
+      popd
+
+    fi
 
   done
 
   # Use the first image in the atlas set as the reference for histogram matching
-  mkdir -p $ASHS_WORK/final/ref_hm
-  HMID=${ATLAS_ID[${ASHS_TARGET_ATLAS_FOR_HISTMATCH?}]}
-  cp -av $ASHS_WORK/atlas/$HMID/mprage.nii.gz $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz
-  cp -av $ASHS_WORK/atlas/$HMID/tse.nii.gz $ASHS_WORK/final/ref_hm/ref_tse.nii.gz
+  if [[ $ASHS_SKIP && \
+        -f $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz && \
+        -f $ASHS_WORK/final/ref_hm/ref_tse.nii.gz ]]
+  then
+    echo "Skipping defining the histogram matching references"
+  else
+    mkdir -p $ASHS_WORK/final/ref_hm
+    HMID=${ATLAS_ID[${ASHS_TARGET_ATLAS_FOR_HISTMATCH?}]}
+    cp -av $ASHS_WORK/atlas/$HMID/mprage.nii.gz $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz
+    cp -av $ASHS_WORK/atlas/$HMID/tse.nii.gz $ASHS_WORK/final/ref_hm/ref_tse.nii.gz
+  fi
 
   popd
 }
@@ -951,9 +1004,10 @@ function ashs_bl_train_qsub()
       local FRAC=$(echo 0 | awk "{ k=$NSAM / ($ASHS_EC_TARGET_SAMPLES * $DRYFRAC); p=(k==int(k) ? k : 1 + int(k)); print p < 1 ? 1 : 1 / p }")
 
       # Now run for real
-      bl truthlist.txt autolist.txt $label \
-        $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_${mode} \
-          $GRAYLIST -p $POSTLIST
+      /usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
+        bl truthlist.txt autolist.txt $label \
+          $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_${mode} \
+            $GRAYLIST -p $POSTLIST
 
     fi
 
@@ -1055,4 +1109,138 @@ function ashs_atlas_adaboost_train()
   # Wait for the training to finish  
   qwait "ashs_bl_*"
 
+}
+
+# This function checks whether all ASHS outputs have been created for a given stage
+function ashs_check_train()
+{
+  local STAGE=$1
+  local NERR=0
+  local NWARN=0
+
+  pushd $ASHS_WORK
+
+  for id in ${ATLAS_ID[*]}; do
+
+    if [[ $STAGE -ge 0 ]]; then
+      for image in tse.nii.gz mprage.nii.gz flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
+                   seg_left.nii.gz seg_right.nii.gz
+      do
+        if [[ ! -f atlas/$id/$image ]]; then
+          echo "STAGE $STAGE: missing file atlas/$id/$image"
+          let NERR=NERR+1
+        fi
+      done
+    fi
+
+    if [[ $STAGE -ge 1 ]]; then
+      for kind in Warp InverseWarp; do
+        if [[ ! -f template_build/atlas${id}_mprage${kind}.nii.gz ]]; then
+          echo "STAGE $STAGE: missing file template_build/atlas${id}_mprage${kind}.nii.gz"
+          let NERR=NERR+1
+        fi
+      done
+    fi
+
+    if [[ $STAGE -ge 2 ]]; then
+      for side in left right; do
+        for kind in \
+          tse_native_chunk_${side} mprage_to_chunktemp_${side} \
+          tse_to_chunktemp_${side} tse_to_chunktemp_${side}_regmask \
+          seg_${side} 
+        do
+          if [[ ! -f atlas/$id/${kind}.nii.gz ]]; then
+            echo "STAGE $STAGE: missing file atlas/$id/${kind}.nii.gz"
+            let NERR=NERR+1
+          fi
+        done
+      done
+    fi
+
+    if [[ $STAGE -ge 3 ]]; then
+      for side in left right; do
+        missing=0
+        for tid in ${ATLAS_ID[*]}; do
+          if [[ $id != $tid ]]; then
+            base=atlas/$id/pairwise/tseg_${side}_train${tid}
+            if [[ ! -f $base/atlas_to_native_segvote.nii.gz ]]; then
+              echo "STAGE $STAGE: missing file $base/atlas_to_native_segvote.nii.gz"
+              let NWARN=NWARN+1
+              let missing=missing+1
+            fi
+          fi
+        done
+        if [[ $missing -ge $((N-1)) ]]; then
+          echo "STAGE $STAGE: missing all pairwise results for atlas $id side $side"
+          let NERR=NERR+1
+        fi
+      done
+    fi
+
+  done
+
+  # Cross-validation
+  local NXVAL=0
+  if [[ -f $ASHS_XVAL ]]; then 
+    NXVAL=$(cat $ASHS_XVAL | wc -l)
+  fi
+
+  # Arrays for the main training
+  XV_TRAIN[0]=${ATLAS_ID[*]}
+  XV_TEST[0]=""
+  XVID[0]="main"
+
+  # Arrays for the cross-validation training
+  for ((jx=1;jx<=$NXVAL;jx++)); do
+
+    XV_TEST[$jx]=$(cat $ASHS_XVAL | awk "NR==$jx { print \$0 }")
+    XV_TRAIN[$jx]=$(echo $( for((i=0;i<$N;i++)); do echo ${ATLAS_ID[i]}; done | awk "\"{${XV_TEST[$jx]}}\" !~ \$1 {print \$1}"))
+    XVID[$jx]=xval$(printf %04d $jx)
+
+  done
+
+  # Loop over the cross-validation experiments
+  if [[ $STAGE -ge 4 ]]; then
+
+    for ((i=0; i<=$NXVAL; i++)); do
+      for side in left right; do
+
+        WTRAIN=$ASHS_WORK/train/${XVID[i]}_${side}
+
+        # Perform the segmentation in a leave-one-out fashion among the training images
+        for id in ${XV_TRAIN[i]}; do
+
+          if [[ ! -f $WTRAIN/loo_seg_${id}_${side}.nii.gz ]]; then
+            echo "STAGE $STAGE: missing file $WTRAIN/loo_seg_${id}_${side}.nii.gz"
+            let NERR=NERR+1
+          fi
+
+        done
+
+        # Look for the adaboost results
+        if [[ ! -f $WTRAIN/counts.txt ]]; then
+          echo "STAGE $STAGE: missing file $WTRAIN/counts.txt"
+          let NERR=NERR+1
+        fi
+
+        for label in $(cat $WTRAIN/counts.txt | awk '{print $1}'); do
+          for kind in usegray nogray; do
+            if [[ ! -f $WTRAIN/adaboost_${kind}-AdaBoostResults-Tlabel${label} ]]; then
+              echo "STAGE $STAGE: missing file $WTRAIN/adaboost_${kind}-AdaBoostResults-Tlabel${label}"
+              let NERR=NERR+1
+            fi
+          done
+        done
+
+      done
+    done 
+
+  fi
+
+  popd
+
+  echo "*****************************"
+  echo "VALIDITY CHECK AT STAGE $STAGE FOUND $NERR ERRORS AND $NWARN WARNINGS"
+  echo "*****************************"
+  if [[ $NERR -gt 0 ]]; then exit -1; fi
 }

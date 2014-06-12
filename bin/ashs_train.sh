@@ -226,29 +226,34 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     # The first step is to build a template from the atlas images using the standard
     # code in ANTS. For this, we got to copy all the atlases to a common directory
     echo "Running stage 1: build template"
+    ashs_check_train 0
     ashs_atlas_build_template;;
 
     2)
 
     echo "Running stage 2: resample all T2 data to template"
+    ashs_check_train 1
     ashs_atlas_resample_tse_to_template;;
 
     3)
 
     # Perform pairwise registration between all atlases
     echo "Running stage 3: pairwise registration between atlases"
+    ashs_check_train 2
     ashs_atlas_register_to_rest;;
 
     4)
 
     # Perform cross-validation experiments
     echo "Running stage 4: AdaBoost training and cross-validation"
+    ashs_check_train 3
     ashs_atlas_adaboost_train;;
 
     5)
 
     # Organize everything into an atlas that can be used with the main ASHS script
     echo "Running stage 5: Organize the output directory"
+    ashs_check_train 4
     ashs_atlas_organize_final;;
 
     6)

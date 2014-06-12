@@ -107,7 +107,9 @@ ASHS_TEMPLATE_MASK_THRESHOLD=0.5
 ASHS_TARGET_ATLAS_FOR_HISTMATCH=0
 
 # The number of control points for histogram matching. See c3d -histmatch
-# command. This is used for atlas building and application
+# command. This is used for atlas building and application. In some cases 
+# (for example 7T data with large intensity range) histogram matching seems
+# to fail. You can set ASHS_HISTMATCH_CONTROLS to 0 turn off matching.
 ASHS_HISTMATCH_CONTROLS=5
 
 
