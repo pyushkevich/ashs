@@ -50,22 +50,22 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
   char buffer[64];
 
   // Set the target as the primary input
-  this->ProcessObject::SetInput("Primary", m_Target);
+  this->itk::ProcessObject::SetInput("Primary", m_Target);
 
   // Set the atlases and their segmentations as secondary inputs
   for(size_t i = 0; i < m_Atlases.size(); i++)
     {
     sprintf(buffer, "atlas_%04d", (int) i);
-    this->ProcessObject::SetInput(buffer, m_Atlases[i]);
+    this->itk::ProcessObject::SetInput(buffer, m_Atlases[i]);
 
     sprintf(buffer, "atseg_%04d", (int) i);
-    this->ProcessObject::SetInput(buffer, m_AtlasSegs[i]);
+    this->itk::ProcessObject::SetInput(buffer, m_AtlasSegs[i]);
     }
 
   for(typename ExclusionMap::iterator it = m_Exclusions.begin(); it != m_Exclusions.end(); ++it)
     {
     sprintf(buffer, "excl_%04f", it->first);
-    this->ProcessObject::SetInput(buffer, it->second);
+    this->itk::ProcessObject::SetInput(buffer, it->second);
     }
 }
 
