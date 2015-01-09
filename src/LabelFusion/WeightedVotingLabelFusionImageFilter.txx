@@ -87,10 +87,11 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
   outRegion.PadByRadius(m_PatchRadius);
 
   // Iterate over all the inputs to this filter
-  for(size_t i = 0; i < this->GetNumberOfInputs(); i++)
+  itk::ProcessObject::DataObjectPointerArray inputs = this->GetInputs();
+  for(size_t i = 0; i < inputs.size(); i++)
     {
     // Get i-th input
-    InputImageType *input = const_cast<InputImageType *>(this->GetInput(i));
+    InputImageType *input = dynamic_cast<InputImageType *>(inputs[i].GetPointer());
     RegionType region = outRegion;
     region.Crop(input->GetLargestPossibleRegion());
     input->SetRequestedRegion(region);
