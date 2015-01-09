@@ -33,10 +33,6 @@ INCLUDE(${ITK_USE_FILE})
 
 ADD_EXECUTABLE(label_fusion LabelFusion.cxx)
 
-SET(COMMON_LIBS
-  ITKCommon
-  ITKBasicFilters
-  ITKIO
-  ITKNumerics)
+SET(COMMON_LIBS ${ITK_LIBRARIES})
 
 TARGET_LINK_LIBRARIES(label_fusion ${COMMON_LIBS})
