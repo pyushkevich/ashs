@@ -210,7 +210,6 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
 
   int iter = 0;
 
-
   // We need an array of absolute patch differences between target image and atlases
   // (apd - atlas patch difference)
   InputImagePixelType **apd = new InputImagePixelType*[n];

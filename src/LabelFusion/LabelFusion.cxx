@@ -39,6 +39,8 @@
 #include "itkImageRegionIteratorWithIndex.h"
 #include <iostream>
 
+#include "itkMirrorPadImageFilter.h"
+#include "itkCropImageFilter.h"
 #include "WeightedVotingLabelFusionImageFilter.txx"
 
 using namespace std;
@@ -65,6 +67,8 @@ int usage()
   cout << "                                  Default: 3x3x3" << endl;
   cout << "  -rs radius                      Search radius for correcting registration." << endl;
   cout << "                                  Default: 3x3x3" << endl;
+  cout << "  -pd radius                      Additional boundary padding for the images (use only if " << endl;
+  cout << "                                  the segmentation extends all the way to image boundaries." << endl;
   cout << "  -x label image.nii              Specify an exclusion region for the given label. " << endl;
   cout << "                                  If a voxel has non-zero value in an exclusion image," << endl;
   cout << "                                  the corresponding label is not allowed at that voxel." << endl;
@@ -104,6 +108,9 @@ struct LFParam
   double alpha, beta, sigma;
   itk::Size<VDim> r_patch, r_search;
   
+  bool padding;
+  itk::Size<VDim> paddingSize;
+
   LFParam()
     {
     alpha = 0.01;
@@ -112,6 +119,7 @@ struct LFParam
     r_patch.Fill(3);
     r_search.Fill(3);
     method = JOINT;
+    padding = false;
     }
 
   void Print(std::ostream &oss)
@@ -143,6 +151,10 @@ struct LFParam
     oss << "Patch Radius: " << r_patch << endl;
     if(fnPosterior.size())
       oss << "Posterior Filename Pattern: " << fnPosterior << endl;
+
+    oss << "Padding Enabled: " << padding << endl;
+    if(padding)
+      oss << "Padding Radius: " << paddingSize << endl;
     }
 };
 
@@ -288,6 +300,18 @@ int lfapp(int argc, char *argv[])
         }
       }
 
+    else if(arg == "-pd" && j < argend-1)
+      {
+      if(!parse_vector<VDim>(argv[++j], p.paddingSize))
+        {
+        cerr << "Bad vector spec " << argv[j] << endl;
+        return -1;
+        }
+      p.padding = false;
+      for(int d = 0; d < VDim; d++)
+        if(p.paddingSize[d] > 0)
+          p.padding = true;
+      }
     else
       {
       cerr << "Unknown option " << arg << endl;
@@ -337,6 +361,18 @@ int lfapp(int argc, char *argv[])
   rTarget->SetFileName(p.fnTarget.c_str());
   rTarget->Update();
   typename ImageType::Pointer target = rTarget->GetOutput();
+
+  if(p.padding)
+    {
+    typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
+    typename PadFilter::Pointer padTarget = PadFilter::New();
+    padTarget->SetInput(target);
+    padTarget->SetPadLowerBound(p.paddingSize);
+    padTarget->SetPadUpperBound(p.paddingSize);
+    padTarget->Update();
+    target = padTarget->GetOutput();
+    }
+
   voter->SetTargetImage(target);
 
   // Compute the output region by merging all segmentations
@@ -349,16 +385,39 @@ int lfapp(int argc, char *argv[])
     typename ReaderType::Pointer ra, rl;
     ra = ReaderType::New();
     ra->SetFileName(p.fnAtlas[i].c_str());
+    ra->Update();
     rAtlas.push_back(ra);
     rl = ReaderType::New();
     rl->SetFileName(p.fnLabel[i].c_str());
+    rl->Update();
     rLabel.push_back(rl);
-    voter->AddAtlas(ra->GetOutput(), rl->GetOutput());
+
+    // Apply padding if requested
+    typename ImageType::Pointer imgAtlas = ra->GetOutput(), imgLabel = rl->GetOutput();
+
+    if(p.padding)
+      {
+      typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
+      typename PadFilter::Pointer padAtlas = PadFilter::New();
+      padAtlas->SetInput(imgAtlas);
+      padAtlas->SetPadLowerBound(p.paddingSize);
+      padAtlas->SetPadUpperBound(p.paddingSize);
+      padAtlas->Update();
+      imgAtlas = padAtlas->GetOutput();
+
+      typename PadFilter::Pointer padLabel = PadFilter::New();
+      padLabel->SetInput(imgLabel);
+      padLabel->SetPadLowerBound(p.paddingSize);
+      padLabel->SetPadUpperBound(p.paddingSize);
+      padLabel->Update();
+      imgLabel = padLabel->GetOutput();
+      }
+
+    voter->AddAtlas(imgAtlas, imgLabel);
 
     // Update the mask region
-    rl->Update();
     for(itk::ImageRegionIteratorWithIndex<ImageType> 
-      it(rl->GetOutput(), rl->GetOutput()->GetBufferedRegion()); 
+      it(imgLabel, imgLabel->GetBufferedRegion()); 
       !it.IsAtEnd(); ++it)
       {
       if(it.Get())
@@ -368,11 +427,12 @@ int lfapp(int argc, char *argv[])
       }
 
     // Unload the image if needed (so that memory is freed up)
-    rl->GetOutput()->ReleaseData();
+    // PY: I DON'T UNDERSTAND THIS - IT'S CAUSING A BUG!
+    // rl->GetOutput()->ReleaseData();
     }
 
   // Make sure the region is inside bounds
-  itk::ImageRegion<VDim> rOut = rTarget->GetOutput()->GetLargestPossibleRegion();
+  itk::ImageRegion<VDim> rOut = target->GetLargestPossibleRegion();
   for(int d = 0; d < 3; d++)
     {
     rOut.SetIndex(d, p.r_patch[d] + p.r_search[d] + rOut.GetIndex(d));
@@ -404,7 +464,20 @@ int lfapp(int argc, char *argv[])
     rx = ReaderType::New();
     rx->SetFileName(xit->second.c_str());
     rx->Update();
-    voter->AddExclusionMap(xit->first, rx->GetOutput());
+    typename ImageType::Pointer xmap = rx->GetOutput();
+
+    if(p.padding)
+      {
+      typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
+      typename PadFilter::Pointer padXMap = PadFilter::New();
+      padXMap->SetInput(xmap);
+      padXMap->SetPadLowerBound(p.paddingSize);
+      padXMap->SetPadUpperBound(p.paddingSize);
+      padXMap->Update();
+      xmap = padXMap->GetOutput();
+      }
+
+    voter->AddExclusionMap(xit->first, xmap);
     }
 
   voter->GetOutput()->SetRequestedRegion(rMask);
@@ -418,9 +491,23 @@ int lfapp(int argc, char *argv[])
     target->SetPixel(it.GetIndex(), it.Get());
     }
 
+  // If the image was padded, crop it
+  typename ImageType::Pointer outSeg = target;
+  if(p.padding)
+    {
+    typedef itk::CropImageFilter<ImageType, ImageType> CropFilter;
+    typename CropFilter::Pointer fltCrop = CropFilter::New();
+    fltCrop->SetInput(target);
+    fltCrop->SetUpperBoundaryCropSize(p.paddingSize);
+    fltCrop->SetLowerBoundaryCropSize(p.paddingSize);
+    fltCrop->Update();
+    outSeg = fltCrop->GetOutput();
+    }
+
+
   // Create writer
   typename WriterType::Pointer writer = WriterType::New();
-  writer->SetInput(target);
+  writer->SetInput(outSeg);
   writer->SetFileName(p.fnOutput.c_str());
   writer->Update();
 
@@ -454,9 +541,22 @@ int lfapp(int argc, char *argv[])
         pout->SetPixel(qt.GetIndex(), qt.Get());
         }
 
+      typename ImageType::Pointer imgPostOut = pout;
+
+      if(p.padding)
+        {
+        typedef itk::CropImageFilter<ImageType, ImageType> CropFilter;
+        typename CropFilter::Pointer fltCrop = CropFilter::New();
+        fltCrop->SetInput(pout);
+        fltCrop->SetUpperBoundaryCropSize(p.paddingSize);
+        fltCrop->SetLowerBoundaryCropSize(p.paddingSize);
+        fltCrop->Update();
+        imgPostOut = fltCrop->GetOutput();
+        }
+
       // Create writer
       typename WriterType::Pointer writer = WriterType::New();
-      writer->SetInput(pout);
+      writer->SetInput(imgPostOut);
       writer->SetFileName(buffer);
       writer->Update();
       }
