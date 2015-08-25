@@ -333,7 +333,7 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
         InputImagePixelType matchSum = 0, matchSSQ = 0;
         double match = this->PatchSimilarity(pSearchCenter, xNormTargetPatch, nPatch, offPatch,
                                              matchSum, matchSSQ);
-        if(match < bestMatch)
+        if(k == 0 || match < bestMatch)
           {
           bestMatch = match;
           bestMatchPtr = pSearchCenter;
@@ -505,7 +505,9 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
 
   mean = sum / n;
   std = sqrt((ssq - n * mean * mean) / (n - 1));
-  if(std < 1e-6) 
+
+  // Check for very small values or NaN
+  if(std < 1e-6 || std != std) 
     std = 1e-6;
 }
 
