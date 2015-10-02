@@ -208,6 +208,21 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     m_PosteriorMap[*sit]->FillBuffer(0.0f);
     }
 
+  // Generate the optional weight maps
+  m_WeightMapArray.resize(n);
+  if(m_GenerateWeightMaps)
+    {
+    for(int i = 0; i < n; i++)
+      {
+      m_WeightMapArray[i] = WeightMapImage::New();
+      m_WeightMapArray[i]->SetLargestPossibleRegion(target->GetLargestPossibleRegion());
+      m_WeightMapArray[i]->SetRequestedRegion(this->GetOutput()->GetRequestedRegion());
+      m_WeightMapArray[i]->SetBufferedRegion(this->GetOutput()->GetRequestedRegion());
+      m_WeightMapArray[i]->Allocate();
+      m_WeightMapArray[i]->FillBuffer(1.0f / n);
+      }
+    }
+
   int iter = 0;
 
   // We need an array of absolute patch differences between target image and atlases
@@ -423,6 +438,14 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
       std::cout << W << std::endl;
       }
       */
+
+    // Output the weight maps if desired
+    if(m_GenerateWeightMaps)
+      {
+      IndexType idx = it.GetIndex();
+      for(int q = 0; q < n; q++)
+        m_WeightMapArray[q]->SetPixel(idx, W[q]);
+      }
 
     // Perform voting using Hongzhi's averaging scheme. Iterate over all segmentation patches
     for(unsigned int ni = 0; ni < nPatch; ni++)

@@ -76,6 +76,9 @@ int usage()
   cout << "                                  voxel belongs to each label) as images. The number of " << endl;
   cout << "                                  images saved equals the number of labels. The filename" << endl;
   cout << "                                  pattern must be in C printf format, e.g. posterior%04d.nii.gz" << endl; 
+  cout << "  -w filenamePattern              Save weight maps corresponding to the atlases." << endl;
+  cout << "                                  The pattern should be like weight%04d.nii.gz" << endl;
+  cout << "                                  This really only makes sense for -rs 0x0x0" << endl;
   cout << "Parameters for -m Gauss option:" << endl;
   cout << "  sigma                           Standard deviation of Gaussian" << endl;
   cout << "                                  Default: X.XX" << endl;
@@ -101,6 +104,7 @@ struct LFParam
   string fnTarget;
   string fnOutput;
   string fnPosterior;
+  string fnWeight;
   LFMethod method;
 
   map<int, string> fnExclusion;
@@ -151,6 +155,8 @@ struct LFParam
     oss << "Patch Radius: " << r_patch << endl;
     if(fnPosterior.size())
       oss << "Posterior Filename Pattern: " << fnPosterior << endl;
+    if(fnWeight.size())
+      oss << "Weight Map Filename Pattern: " << fnWeight << endl;
 
     oss << "Padding Enabled: " << padding << endl;
     if(padding)
@@ -244,6 +250,11 @@ int lfapp(int argc, char *argv[])
     else if(arg == "-p")
       {
       p.fnPosterior = argv[++j];
+      }
+
+    else if(arg == "-w")
+      {
+      p.fnWeight = argv[++j];
       }
 
     else if(arg == "-x")
@@ -340,6 +351,24 @@ int lfapp(int argc, char *argv[])
     if(strcmp(buffer, p.fnPosterior.c_str()) == 0)
       {
       cerr << "Invalid filename pattern " << p.fnPosterior << endl;
+      return -1;
+      }
+    }
+
+  if(p.fnWeight.size())
+    {
+    char buffer[4096];
+    sprintf(buffer, p.fnWeight.c_str(), 100);
+    if(strcmp(buffer, p.fnWeight.c_str()) == 0)
+      {
+      cerr << "Invalid filename pattern " << p.fnWeight << endl;
+      return -1;
+      }
+
+    itk::Size<VDim> zeroSize; zeroSize.Fill(0);
+    if(p.r_search != zeroSize)
+      {
+      cerr << "Weight maps can only be used with zero search radius! Use -rs 0x0x0" << endl;
       return -1;
       }
     }
@@ -449,6 +478,9 @@ int lfapp(int argc, char *argv[])
   if(p.fnPosterior.size())
     voter->SetRetainPosteriorMaps(true);
 
+  if(p.fnWeight.size())
+    voter->SetGenerateWeightMaps(true);
+
   std::cout << "Output Requested Region: " << rMask.GetIndex() << ", " << rMask.GetSize() << " ("
     << rMask.GetNumberOfPixels() << " pixels)" << std::endl;
   /*
@@ -510,6 +542,52 @@ int lfapp(int argc, char *argv[])
   writer->SetInput(outSeg);
   writer->SetFileName(p.fnOutput.c_str());
   writer->Update();
+
+  // Store the weight maps
+  if(p.fnWeight.size())
+    {
+    for(int i = 0; i < p.fnAtlas.size(); i++)
+      {
+      // Create a full-size image
+      typename VoterType::WeightMapImagePtr wout = VoterType::WeightMapImage::New();
+      wout->SetRegions(target->GetBufferedRegion());
+      wout->CopyInformation(target);
+      wout->Allocate();
+      wout->FillBuffer(1.0f / p.fnAtlas.size());
+
+      // Replace the portion affected by the filter
+      for(itk::ImageRegionIteratorWithIndex<typename VoterType::WeightMapImage> qt(voter->GetWeightMap(i), rMask);
+        !qt.IsAtEnd(); ++qt)
+        {
+        wout->SetPixel(qt.GetIndex(), qt.Get());
+        }
+
+      // Deal with padding
+      typename VoterType::WeightMapImagePtr imgWeightOut = wout;
+
+      if(p.padding)
+        {
+        typedef itk::CropImageFilter<typename VoterType::WeightMapImage, typename VoterType::WeightMapImage> CropFilter;
+        typename CropFilter::Pointer fltCrop = CropFilter::New();
+        fltCrop->SetInput(wout);
+        fltCrop->SetUpperBoundaryCropSize(p.paddingSize);
+        fltCrop->SetLowerBoundaryCropSize(p.paddingSize);
+        fltCrop->Update();
+        imgWeightOut = fltCrop->GetOutput();
+        }
+
+      // Get the filename
+      char buffer[4096];
+      sprintf(buffer, p.fnWeight.c_str(), i);
+
+      // Create writer
+      typedef itk::ImageFileWriter<typename VoterType::WeightMapImage> WeightWriter;
+      typename WeightWriter::Pointer writer = WeightWriter::New();
+      writer->SetInput(imgWeightOut);
+      writer->SetFileName(buffer);
+      writer->Update();
+      }
+    }
 
   // Finally, store the posterior maps
   if(p.fnPosterior.size())

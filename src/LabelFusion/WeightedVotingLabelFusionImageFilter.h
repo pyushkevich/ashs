@@ -117,15 +117,34 @@ public:
   itkSetMacro(RetainPosteriorMaps, bool)
   itkGetMacro(RetainPosteriorMaps, bool)
 
+  /**
+   * Whether per-atlas weight maps should be generated. This really only makes sense
+   * when the search radius is zero, because the weight corresponds to the atlas 
+   * patch that was found to be the best match to the target patch, and this information
+   * is not currently exported in any way
+   */
+  itkSetMacro(GenerateWeightMaps, bool)
+  itkGetMacro(GenerateWeightMaps, bool)
+
   typedef itk::Image<float, InputImageDimension> PosteriorImage;
   typedef typename PosteriorImage::Pointer PosteriorImagePtr;
   typedef typename std::map<InputImagePixelType, PosteriorImagePtr> PosteriorMap;
+
+  typedef itk::Image<float, InputImageDimension> WeightMapImage;
+  typedef typename WeightMapImage::Pointer WeightMapImagePtr;
+  typedef typename std::vector<WeightMapImagePtr> WeightMapArray;
                                                                     
   /**
    * Get the posterior maps (if they have been retained)
    */
   const PosteriorMap &GetPosteriorMaps()
     { return m_PosteriorMap; }
+
+  /**
+   * Get the weight image for each atlas
+   */
+  WeightMapImage* GetWeightMap(int iAtlas) const
+    { return m_WeightMapArray[iAtlas]; }
 
 
 
@@ -138,6 +157,7 @@ protected:
     m_Alpha=0.01; 
     m_Beta=2; 
     m_RetainPosteriorMaps = false;
+    m_GenerateWeightMaps = false;
     }
   ~WeightedVotingLabelFusionImageFilter() {}
 
@@ -172,6 +192,12 @@ private:
 
   // Whether they are retained
   bool m_RetainPosteriorMaps;
+
+  // Whether weight maps are computed
+  bool m_GenerateWeightMaps;
+
+  // Optional weight map array
+  WeightMapArray m_WeightMapArray;
 
   // Organized lists of inputs
   InputImagePointer m_Target;
