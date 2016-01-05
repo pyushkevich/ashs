@@ -191,15 +191,132 @@ function vers()
   echo $ASHS_VERSION_SVN
 }
 
+
+# This function defines common file variables for ASHS subjects. It is an 
+# alternative to using filenames
+function ashs_subj_vars()
+{
+  # Get the directory in which these variables are defined
+  local WORK=${1?}
+  local WANT=$WORK/ants_t1_to_temp
+  local WAFF=$WORK/affine_t1_to_template
+  local WFSL=$WORK/flirt_t2_to_t1
+
+  # Main images
+  SUBJ_MPRAGE=$WORK/mprage.nii.gz
+  SUBJ_TSE=$WORK/tse.nii.gz
+
+  # Transformations between T1 and T2
+  SUBJ_AFF_T2T1_MAT=$WFSL/flirt_t2_to_t1.mat
+  SUBJ_AFF_T2T1_INVMAT=$WFSL/flirt_t2_to_t1_inv.mat
+
+  # Unit transformations between T1 and template
+  SUBJ_AFF_T1TEMP_MAT=$WAFF/t1_to_template_affine.mat
+  SUBJ_AFF_T1TEMP_INVMAT=$WAFF/t1_to_template_affine_inv.mat
+
+  SUBJ_T1TEMP_WARP=$WANT/greedy_t1_to_template_warp.nii.gz
+  SUBJ_T1TEMP_INVWARP=$WANT/greedy_t1_to_template_invwarp.nii.gz
+
+  # Composite transformations from T1 and template
+  SUBJ_T1TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT"
+  SUBJ_T1TEMP_INVTRAN="$SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+
+  # Composite transformations from T2 and template
+  SUBJ_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_MAT"
+  SUBJ_T2TEMP_INVTRAN="$SUBJ_AFF_T2T1_INVMAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+}
+
+# ASHS side-specific variables
+function ashs_subj_side_vars()
+{
+  local WORK=${1?}
+  side=${2?}
+
+  ashs_subj_vars $WORK 
+
+  # Side-specific stuff
+  SUBJ_SIDE_TSE_TO_CHUNKTEMP=$WORK/tse_to_chunktemp_${side}.nii.gz
+  SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP=$WORK/mprage_to_chunktemp_${side}.nii.gz
+  SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK=$WORK/tse_to_chunktemp_${side}_regmask.nii.gz
+  SUBJ_SIDE_TSE_NATCHUNK=$WORK/tse_native_chunk_${side}.nii.gz
+}
+
+# ASHS atlas-specific variables
+function ashs_atlas_vars()
+{
+  set -e
+  local tid=${1?}
+  local ATLAS_MODE=${2?}
+
+  # If in atlas mode complain
+  if [[ $ATLAS_MODE -eq 1 ]]; then
+    TDIR=$ASHS_WORK/atlas/${tid}
+    ### ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
+    ### ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_chunktemp_${side}InverseWarp.nii.gz
+  else
+    TDIR=$ASHS_ATLAS/train/train${tid} 
+  fi
+
+  # Basic images
+  ATLAS_MPRAGE=$TDIR/mprage.nii.gz
+  ATLAS_TSE=$TDIR/tse.nii.gz
+
+  # Transformations between T1 and T2
+  ATLAS_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1_ITK.txt
+  ATLAS_AFF_T2T1_INVMAT="$ATLAS_AFF_T2T1_MAT,-1"
+
+  # Unit transformations between T1 and template
+  ATLAS_AFF_T1TEMP_MAT=$TDIR/ants_t1_to_tempAffine.txt
+  ATLAS_AFF_T1TEMP_INVMAT="$ATLAS_AFF_T1TEMP_MAT,-1"
+}  
+
+# ASHS atlas and side-specific variables
+function ashs_atlas_side_vars()
+{
+  local tid=${1?}
+  local side=${2?}
+  local ATLAS_MODE=${3?}
+  local TDIR=$ASHS_ATLAS/train/train${tid}
+
+  ashs_atlas_vars $tid $ATLAS_MODE
+
+  # To save space, the atlas only stores chunk-wise warps to template
+  if [[ $ATLAS_MODE -eq 0 ]]; then
+    ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
+    ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_chunktemp_${side}InverseWarp.nii.gz
+  fi
+
+  # Composite transformations from T1 and template
+  ATLAS_T1TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT"
+  ATLAS_T1TEMP_INVTRAN="$ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
+
+  # Composite transformations from T2 and template
+  ATLAS_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_MAT"
+  ATLAS_T2TEMP_INVTRAN="$ATLAS_AFF_T2T1_INVMAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
+
+  # Template chunk pieces
+  ATLAS_SIDE_TSE_TO_CHUNKTEMP=$TDIR/tse_to_chunktemp_${side}.nii.gz
+  ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP=$TDIR/mprage_to_chunktemp_${side}.nii.gz
+  ATLAS_SIDE_TSE_TO_CHUNKTEMP_REGMASK=$TDIR/tse_to_chunktemp_${side}_regmask.nii.gz
+  ATLAS_SIDE_TSE_NATCHUNK=$TDIR/tse_native_chunk_${side}.nii.gz
+
+  # Atlas segmentations in native space
+  ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
+}
+
+
 # This function aligns the T1 and T2 images together. It takes two parameters: the 
-# path to a directory containing images mprage.nii.gz and tse.nii.gz, and a path to 
+# path to a directory containing images mprage.niigz and tse.nii.gz, and a path to 
 # the directory where the output of the registration is stored.
 function ashs_align_t1t2()
 {
-  ASHS_WORK=${1?}
-  WFSL=${2?}
+  local ASHS_WORK=${1?}
+  local WFSL=${2?}
 
-  if [[ -f $WFSL/flirt_t2_to_t1_ITK.txt && $ASHS_SKIP_RIGID ]]; then
+  # Load the subject variables
+  ashs_subj_vars $ASHS_WORK
+
+  if [[ -f $SUBJ_AFF_T2T1_MAT && $ASHS_SKIP_RIGID ]]; then
     
     echo "Skipping Rigid Registration"
 
@@ -209,11 +326,13 @@ function ashs_align_t1t2()
     export FSLOUTPUTTYPE=NIFTI_GZ
 
     # Make the ASHS_TSE image isotropic and extract a chunk
-    c3d $ASHS_WORK/tse.nii.gz -resample ${ASHS_TSE_ISO_FACTOR?} -region ${ASHS_TSE_ISO_REGION_CROP?} \
-			-o $TMPDIR/tse_iso.nii.gz
+    c3d $SUBJ_TSE -resample ${ASHS_TSE_ISO_FACTOR?} \
+      -region ${ASHS_TSE_ISO_REGION_CROP?} \
+			-type short -o $TMPDIR/tse_iso.nii.gz
 
     # Reslice T1 into space of T2 chunk
-    c3d $TMPDIR/tse_iso.nii.gz $ASHS_WORK/mprage.nii.gz -reslice-identity -o $TMPDIR/mprage_to_tse_iso.nii.gz
+    c3d $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
+      -reslice-identity -type short -o $TMPDIR/mprage_to_tse_iso.nii.gz
 
     # Run flirt with T2 as reference (does it matter at this point?)
     flirt -v -ref $TMPDIR/tse_iso.nii.gz -in $TMPDIR/mprage_to_tse_iso.nii.gz \
@@ -222,7 +341,8 @@ function ashs_align_t1t2()
     # Convert the T1-T2 transform to ITK
     c3d_affine_tool $WFSL/flirt_intermediate.mat -ref $TMPDIR/tse_iso.nii.gz \
 			-src $TMPDIR/mprage_to_tse_iso.nii.gz \
-      -fsl2ras -inv -oitk $WFSL/flirt_t2_to_t1_ITK.txt
+      -fsl2ras -inv -oitk $WFSL/flirt_t2_to_t1_ITK.txt \
+      -o $SUBJ_AFF_T2T1_MAT -inv -o $SUBJ_AFF_T2T1_INVMAT
 
   fi
 }
@@ -233,24 +353,25 @@ function ashs_align_t1t2()
 function ashs_ants_pairwise()
 {
   # Check required variables
-	local ATLAS_MODE=${1?}
-  cat <<-CHECK_ashs_ants_pairwise
-		Workdir : ${WREG?}
-		AtlasDir: ${TDIR?}
-		AtlasId: ${tid?}
-		Side: ${side?}
-		Atlas Mode: ${ATLAS_MODE}
-	CHECK_ashs_ants_pairwise
+  local side=${1?}
+  local tid=${2?}
+  local WREG=${3?}
+	local ATLAS_MODE=${4?}
+
+  # Get the subject data
+  ashs_subj_vars $ASHS_WORK
+  ashs_subj_side_vars $ASHS_WORK $side
+  ashs_atlas_side_vars $tid $side $ATLAS_MODE
+
+  # Define the local transform variables
+  local ATLAS_SUBJ_AFF_MAT=$WREG/greedy_atlas_to_subj_affine.mat
+  local ATLAS_SUBJ_WARP=$WREG/greedy_atlas_to_subj_warp.nii.gz
 
   # Run ANTS with current image as fixed, training image as moving
-  if [[ $ASHS_SKIP_ANTS && \
-        -f $WREG/antsregAffine.txt && \
-        -f $WREG/antsregWarp.nii.gz && \
-        -f $WREG/antsregInverseWarp.nii.gz ]]
-  then
+  if [[ $ASHS_SKIP_ANTS && -f $ATLAS_SUBJ_AFF_MAT && -f $ATLAS_SUBJ_WARP ]]; then
 
     # If registration exists, skip this step
-    echo "Skipping ANTS registration $side/$tid"
+    echo "Skipping Greedy registration $side/$tid"
 
   else
 
@@ -258,124 +379,93 @@ function ashs_ants_pairwise()
     if [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print $1 == 0.0}') -eq 1 ]]; then
 
       # T1 has a zero weight
-      local ANTS_METRIC_TERM="-m PR[tse_to_chunktemp_${side}.nii.gz,$TDIR/tse_to_chunktemp_${side}.nii.gz,1,4]"
+      local METRIC_TERM="-i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP"
       
     else
 
       # T1 has non-zero weight
       local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print 1.0 - $1}')
-      local ANTS_METRIC_TERM=\
-        "-m PR[mprage_to_chunktemp_${side}.nii.gz,$TDIR/mprage_to_chunktemp_${side}.nii.gz,$ASHS_PAIRWISE_ANTS_T1_WEIGHT,4] \
-         -m PR[tse_to_chunktemp_${side}.nii.gz,$TDIR/tse_to_chunktemp_${side}.nii.gz,$T2WGT,4] \
-         --use-all-metrics-for-convergence"
+      local METRIC_TERM=\
+        "-w $T2WGT \
+         -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
+         -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
+         -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
     fi 
 
-    ANTS 3 \
-      -x tse_to_chunktemp_${side}_regmask.nii.gz $ANTS_METRIC_TERM -o $WREG/antsreg.nii.gz \
-			-i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v
+    # Perform greedy affine registration with mask and NCC metric
+    time greedy -d 3 -a \
+      -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
+      -m NCC 4x4x4 -n 60x60x0
 
-    # Compress the warps
-    shrink_warp 3 $WREG/antsregWarp.nii.gz $WREG/antsregWarp.nii.gz
-    shrink_warp 3 $WREG/antsregInverseWarp.nii.gz $WREG/antsregInverseWarp.nii.gz
+    # Perform greedy deformable registration with NCC metric
+    time greedy -d 3 -it $ATLAS_SUBJ_AFF_MAT \
+      -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
+      -n 60x60x20 -s 1.2 0.4 -e 0.5 \
+      -m NCC 4x4x4 
+
+    # TODO: restore the config stuff
+    ### -n $ASHS_PAIRWISE_ANTS_ITER -e $ASHS_PAIRWISE_ANTS_STEPSIZE
+
+    # Old code
+    ## ANTS 3 \
+    ##  -x tse_to_chunktemp_${side}_regmask.nii.gz $ANTS_METRIC_TERM -o $WREG/antsreg.nii.gz \
+		##	-i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v
 
   fi
 
-  # I think we want to use the full TSE so we don't get confusion in regions
-  # where the native chunks don't overlap
-  local ATLAS_TSE=$TDIR/tse.nii.gz
-
-  # But we certainly don't need to use the full segmentation! It's zero outside
-  # of the native chunk anyway...
-  local ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
-
-	# Some things are in different locations depending on if this is atlas mode or not
-	if [[ $ATLAS_MODE -eq 1 ]]; then
-		local ATLAS_ANTS_WARP=$TDIR/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz
-		local ATLAS_ANTS_AFFINE=$TDIR/ants_t1_to_temp/ants_t1_to_tempAffine.txt
-		local ATLAS_FLIRT=$TDIR/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt
-	else
-		local ATLAS_ANTS_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
-		local ATLAS_ANTS_AFFINE=$TDIR/ants_t1_to_tempAffine.txt
-		local ATLAS_FLIRT=$TDIR/flirt_t2_to_t1_ITK.txt
-	fi
+  # Define the resliced images
+  local ATLAS_RESLICE=$WREG/atlas_to_native.nii.gz
+  local ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
 
   # Reslice the atlas into target space
-  if [[ $ASHS_SKIP && \
-        -f $WREG/atlas_to_native.nii.gz &&
-        -f $WREG/atlas_to_native_segvote.nii.gz ]]
-  then
+  if [[ $ASHS_SKIP && -f $ATLAS_RESLICE && -f $ATLAS_RESLICE_SEG ]]; then
 
     echo "Skipping reslicing into native space"
   
   else
 
-    # Create a composite warp from atlas to target image (temporary)
-    /usr/bin/time -f "ComposeMultiTransform: walltime=%E, memory=%M" \
-      ComposeMultiTransform 3 \
-        $TMPDIR/fullWarp.nii \
-        -R tse_native_chunk_${side}.nii.gz \
-        -i flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
-        -i ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-        ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz \
-        $WREG/antsregWarp.nii.gz \
-        $WREG/antsregAffine.txt \
-        $ATLAS_ANTS_WARP $ATLAS_ANTS_AFFINE $ATLAS_FLIRT
-
-    # Apply the composite warp to the tse image
-    /usr/bin/time -f "Warp TSE: walltime=%E, memory=%M" \
-      WarpImageMultiTransform 3 $ATLAS_TSE \
-        $WREG/atlas_to_native.nii.gz \
-        $TMPDIR/fullWarp.nii
-
-    # Warp the segmentation labels the same way. This should work with WarpImageMultiTransform --use-ML
-    # but for some reason that is still broken. Let's use the old way
-    local LSET=($(c3d $ATLAS_SEG -dup -lstat | awk 'NR > 1 {print $1}'))
-
-    for ((i=0; i < ${#LSET[*]}; i++)); do
-
-      local LID=$(printf '%03d' $i)
-      c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth $ASHS_LABEL_SMOOTHING -o $TMPDIR/label_${LID}.nii.gz
-
-      /usr/bin/time -f "Warp label ${LID}: walltime=%E, memory=%M" \
-        WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
-          $TMPDIR/label_${LID}_warp.nii.gz \
-          $TMPDIR/fullWarp.nii
-
-    done
-
-    # Perform voting using replacement rules
-    local RULES=$(for ((i=0; i < ${#LSET[*]}; i++)); do echo $i ${LSET[i]}; done)
-    c3d $TMPDIR/label_*_warp.nii.gz -vote -replace $RULES -o $WREG/atlas_to_native_segvote.nii.gz
+    # Apply full composite warp from atlas TSE to subject TSE
+    # TODO: make Greedy read scales in mm/vox units and use ASHS_LABEL_SMOOTHING
+    greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
+      -rm $ATLAS_TSE $ATLAS_RESLICE \
+      -ri LABEL 0.24 -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
+      -r $SUBJ_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T2TEMP_TRAN
 
   fi
 
 	# In tidy mode, we can clean up after this step
 	if [[ $ASHS_TIDY ]]; then
-		rm -rf $WREG/antsreg*
+		rm -rf $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT
 	fi
 }
 
-# This function performs what
+
 
 # This function maps histogram-corrected whole-brain images into the 
 # reference space of the template. Parameters are the atlas directory
 # containing the input images, and the atlas directory
 function ashs_reslice_to_template()
 {
-  ASHS_WORK=${1?}
-  ATLAS=${2?}
-  WANT=$ASHS_WORK/ants_t1_to_temp
-  WFSL=$ASHS_WORK/flirt_t2_to_t1
+  local ASHS_WORK=${1?}
+  local ATLAS=${2?}
+  local WANT=$ASHS_WORK/ants_t1_to_temp
+  local WFSL=$ASHS_WORK/flirt_t2_to_t1
+
+  # Subject files generated in this script
+  ashs_subj_vars $ASHS_WORK
 
   # Apply the transformation to the masks
+  local side
   for side in left right; do
+
+    ashs_subj_side_vars $ASHS_WORK $side
 
     # Only generate these targets if needed
     if [[ $ASHS_SKIP && \
-          -f $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz && \
-          -f $ASHS_WORK/mprage_to_chunktemp_${side}.nii.gz && \
-          -f $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz && \
-          -f $ASHS_WORK/tse_native_chunk_${side}.nii.gz ]]
+          -f $SUBJ_SIDE_TSE_TO_CHUNKTEMP && \
+          -f $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK && \
+          -f $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP && \
+          -f $SUBJ_SIDE_TSE_NATCHUNK ]]
     then
       echo "Skipping reslicing of data to template and native ROI"
     else
@@ -383,36 +473,31 @@ function ashs_reslice_to_template()
       # Define the reference space
       REFSPACE=$ATLAS/template/refspace_${side}.nii.gz
 
-      # Map the image to the target space
-      WarpImageMultiTransform 3 $ASHS_WORK/tse_histmatch.nii.gz \
-        $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz -R $REFSPACE \
-        $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
+      # Map the TSE image to the template space
+      greedy -d 3 -rf $REFSPACE \
+        -rm $SUBJ_TSE $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+        -r $SUBJ_T2TEMP_TRAN
 
-      # Map the image to the target space
-      WarpImageMultiTransform 3 $ASHS_WORK/mprage_histmatch.nii.gz \
-        $ASHS_WORK/mprage_to_chunktemp_${side}.nii.gz -R $REFSPACE \
-        $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt 
+      # Map the mprage image to the template space
+      greedy -d 3 -rf $REFSPACE \
+        -rm $SUBJ_MPRAGE $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP \
+        -r $SUBJ_T1TEMP_TRAN
 
       # Create a custom mask for the ASHS_TSE image
-      c3d $ASHS_WORK/tse_to_chunktemp_${side}.nii.gz -verbose -pim r -thresh 0.001% inf 1 0 \
-        -erode 0 4x4x4 $REFSPACE -times -type uchar -o $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz
-
-      # Create a combined warp from chunk template to T2 native space - and back
-      ComposeMultiTransform 3 $TMPDIR/ants_t2_to_temp_fullWarp.nii.gz -R $REFSPACE \
-        $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
-
-      ComposeMultiTransform 3 $TMPDIR/ants_t2_to_temp_fullInverseWarp.nii.gz \
-        -R $ASHS_WORK/tse.nii.gz -i $WFSL/flirt_t2_to_t1_ITK.txt \
-        -i $WANT/ants_t1_to_tempAffine.txt $WANT/ants_t1_to_tempInverseWarp.nii.gz
+      c3d $SUBJ_SIDE_TSE_TO_CHUNKTEMP -verbose -pim r -thresh 0.001% inf 1 0 \
+        -erode 0 4x4x4 $REFSPACE -times -type uchar \
+        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK 
 
       # Create a native-space chunk of the ASHS_TSE image 
-      WarpImageMultiTransform 3 $ASHS_WORK/tse_to_chunktemp_${side}_regmask.nii.gz \
-        $TMPDIR/natmask.nii.gz -R $ASHS_WORK/tse.nii.gz $TMPDIR/ants_t2_to_temp_fullInverseWarp.nii.gz
+      greedy -d 3 -rf $SUBJ_TSE \
+        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
+        -r $SUBJ_T2TEMP_INVTRAN
 
-      # Notice that we pad a little in the z-direction. This is to make sure that we get all the 
-      # slices in the image, otherwise there will be problems with the voting code.
-      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox $ASHS_WORK/tse.nii.gz \
-        -reslice-identity -o $ASHS_WORK/tse_native_chunk_${side}.nii.gz 
+      # Notice that we pad a little in the z-direction. This is to make sure that 
+      # we get all the slices in the image, otherwise there will be problems with 
+      # the voting code.
+      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
+        $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
 
     fi
 
@@ -423,7 +508,8 @@ function ashs_reslice_to_template()
         echo "Skipping reslicing the segmentation to native space"
       else
         c3d $ASHS_WORK/tse_native_chunk_${side}.nii.gz $ASHS_WORK/seg_${side}.nii.gz \
-          -int 0 -reslice-identity -o $ASHS_WORK/tse_native_chunk_${side}_seg.nii.gz
+          -int 0 -reslice-identity -type short \
+          -o $ASHS_WORK/tse_native_chunk_${side}_seg.nii.gz
       fi
     fi
 
