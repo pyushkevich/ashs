@@ -1,0 +1,3 @@
+[submodule "submodules/ITK"]
+	path = submodules/ITK
+	url = http://itk.org/ITK.git
