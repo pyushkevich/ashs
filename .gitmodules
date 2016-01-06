@@ -1,6 +1,0 @@
-[submodule "submodules/ITK"]
-	path = submodules/ITK
-	url = http://itk.org/ITK.git
-[submodule "submodules/git"]
-	path = submodules/c3d
-	url = http://git.code.sf.net/p/c3d/git
