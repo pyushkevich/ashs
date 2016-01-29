@@ -121,7 +121,7 @@ ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
 
 greedy -d 3 \
   -rm $ATLAS_TSE $ATLAS_RESLICE \
-  -ri ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
+  -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
   -rf $SUBJ_SIDE_TSE_NATCHUNK \
   -r $WREG/sqrt_inv.mat,-1 $BOOT_WARP $WREG/sqrt_fwd.mat
 
