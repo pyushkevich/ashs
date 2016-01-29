@@ -59,6 +59,8 @@ function usage()
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
 		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
+      -P                Use GNU parallel to run on multiple cores on the local machine. You need to
+                        have GNU parallel installed.
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
 		                    files should consist of two nifti files in quotation marks:
 
@@ -85,6 +87,21 @@ function usage()
 	USAGETEXT
 }
 
+# Dereference a link - different calls on different systems
+function dereflink ()
+{
+  if [[ $(uname) == "Darwin" ]]; then
+    local SLTARG=$(readlink $1)
+    if [[ $SLTARG ]]; then
+      echo $SLTARG
+    else
+      echo $1
+    fi
+  else
+    readlink -f $1
+  fi
+}
+
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
@@ -97,20 +114,21 @@ unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:NTdhVQ" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:NTdhVQP" opt; do
   case $opt in
 
-    a) ATLAS=$(readlink -f $OPTARG);;
-    g) ASHS_MPRAGE=$(readlink -f $OPTARG);;
-    f) ASHS_TSE=$(readlink -f $OPTARG);;
-    w) ASHS_WORK=$(readlink -f $OPTARG);;
+    a) ATLAS=$(dereflink $OPTARG);;
+    g) ASHS_MPRAGE=$(dereflink $OPTARG);;
+    f) ASHS_TSE=$(dereflink $OPTARG);;
+    w) ASHS_WORK=$(dereflink $OPTARG);;
     s) STAGE_SPEC=$OPTARG;;
     N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
     T) ASHS_TIDY=1;;
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
+    P) ASHS_USE_PARALLEL=1;;
     q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
-    C) ASHS_CONFIG=$(readlink -f $OPTARG);;
+    C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
     d) set -x -e;;
     h) usage; exit 0;;
@@ -125,7 +143,7 @@ done
 if [[ ! $ASHS_ROOT ]]; then
   echo "Please set ASHS_ROOT to the ASHS root directory before running $0"
   exit -2
-elif [[ $ASHS_ROOT != $(readlink -f $ASHS_ROOT) ]]; then
+elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
   echo "ASHS_ROOT must point to an absolute path, not a relative path"
   exit -2
 fi
@@ -135,20 +153,26 @@ if [[ ! $ASHS_CONFIG ]]; then
   ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
 fi
 
+# Check that parallel and qsub are not both on
+if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
+  echo "Cannot use SGE (-Q) and GNU Parallel (-P) at the same time"
+  exit -2
+fi
+
 # Load the library. This also processes the config file
 source $ASHS_ROOT/bin/ashs_lib.sh
 
 # Check if the required parameters were passed in
-echo "Atlas    : ${ATLAS?    "Directory for atlas was not specified. See $0 -h"}
-echo "T1 Image : ${ASHS_MPRAGE?   "T1-weighted MRI was not specified. See $0 -h"}
-echo "T2 Image : ${ASHS_TSE?      "T2-weighted MRI was not specified. See $0 -h"}
-echo "WorkDir  : ${ASHS_WORK?     "Working directory was not specified. See $0 -h"}
+echo "Atlas    : ${ATLAS?    "Directory for atlas was not specified. See $0 -h"}"
+echo "T1 Image : ${ASHS_MPRAGE?   "T1-weighted MRI was not specified. See $0 -h"}"
+echo "T2 Image : ${ASHS_TSE?      "T2-weighted MRI was not specified. See $0 -h"}"
+echo "WorkDir  : ${ASHS_WORK?     "Working directory was not specified. See $0 -h"}"
 
 # Handle the -r parameter
 if [[ $ASHS_REFSEG_LIST ]]; then
   if [[ ${#ASHS_REFSEG_LIST[*]} -eq 2 ]]; then
-    ASHS_REFSEG_LEFT=$(readlink -f ${ASHS_REFSEG_LIST[0]})
-    ASHS_REFSEG_RIGHT=$(readlink -f ${ASHS_REFSEG_LIST[1]})
+    ASHS_REFSEG_LEFT=$(dereflink ${ASHS_REFSEG_LIST[0]})
+    ASHS_REFSEG_RIGHT=$(dereflink ${ASHS_REFSEG_LIST[1]})
     if [[ ! -f $ASHS_REFSEG_LEFT || ! -f $ASHS_REFSEG_RIGHT ]]; then
       echo "Reference segmentation $ASHS_REFSEG_LEFT $ASHS_REFSEG_RIGHT not found"
       exit -2
@@ -165,6 +189,8 @@ if [[ $ASHS_USE_QSUB ]]; then
     exit -1;
   fi
   echo "Using SGE with root $SGE_ROOT and options $QOPTS"
+elif [[ $ASHS_USE_PARALLEL ]]; then
+  echo "Using GNU parallel"
 else
   echo "Not using SGE"
 fi

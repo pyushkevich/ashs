@@ -24,7 +24,7 @@
 #ifndef __itkOrientedRASImage_h_
 #define __itkOrientedRASImage_h_
 
-#include "itkOrientedImage.h"
+#include "itkImage.h"
 
 namespace itk {
 
@@ -32,12 +32,12 @@ namespace itk {
  * Oriented image with RAS physical coordinates (as opposed to LPS)
  */
 template <class TPixel, unsigned int VImageDimension>
-class ITK_EXPORT OrientedRASImage : public OrientedImage<TPixel, VImageDimension>
+class ITK_EXPORT OrientedRASImage : public Image<TPixel, VImageDimension>
 {
 public:
   /** Standard class typedefs */
   typedef OrientedRASImage               Self;
-  typedef OrientedImage<TPixel, VImageDimension>  Superclass;
+  typedef Image<TPixel, VImageDimension>  Superclass;
   typedef SmartPointer<Self>  Pointer;
   typedef SmartPointer<const Self>  ConstPointer;
   typedef WeakPointer<const Self>  ConstWeakPointer;
@@ -47,7 +47,7 @@ public:
   itkNewMacro(Self);
 
   /** Run-time type information (and related methods). */
-  itkTypeMacro(OrientedRASImage, OrientedImage);
+  itkTypeMacro(OrientedRASImage, Image);
 
   /** Index typedef support. An index is used to access pixel values. */
   typedef typename Superclass::IndexType  IndexType;
@@ -138,7 +138,7 @@ public:
   /** Take a vector or covariant vector that has been computed in the
    * coordinate system parallel to the image grid and rotate it by the
    * direction cosines in order to get it in terms of the coordinate system of
-   * the image acquisition device.  This implementation in the OrientedImage
+   * the image acquisition device.  This implementation in the Image
    * multiply the array (vector or covariant vector) by the matrix of Direction
    * Cosines. The arguments of the method are of type FixedArray to make
    * possible to use this method with both Vector and CovariantVector.

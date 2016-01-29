@@ -81,20 +81,10 @@ else
 	# Try using FLIRT
   export FSLOUTPUTTYPE=NIFTI_GZ
 
-  # Run flirt with template as reference
-  flirt -v -anglerep quaternion -ref $TEMP_T1_FULL -in $SUBJ_MPRAGE \
-    -datatype short -o $WAFF/test_flirt_affine.nii.gz \
-    -omat $WAFF/flirt_intermediate_affine.mat -cost corratio -searchcost corratio
-
-  # Convert the transform to ITK and to C3D formats
-  c3d_affine_tool $WAFF/flirt_intermediate_affine.mat -ref $TEMP_T1_FULL \
-    -src $SUBJ_MPRAGE -fsl2ras -oitk $WAFF/flirt_t1_to_template_ITK.txt \
-    -o $WAFF/flirt_t1_to_template.mat
-
   # Use greedy
   time greedy -d 3 -a -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
-    -o $WAFF/greedy_t1_to_template.mat -n 80x40x0
+    -o $WAFF/greedy_t1_to_template.mat -ia-id -n 400x80x40x0
 
   greedy -d 3 -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
     -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
@@ -104,19 +94,9 @@ else
 	# WarpImageMultiTransform 3 $ASHS_WORK/mprage.nii.gz $WAFF/test_ants_affine.nii.gz \
 	#	 -R $TEMP_T1_FULL $WAFF/antsaffineonlyAffine.txt
 
-	# Compare the two images
-	SIM_FLIRT=$(c3d $TEMP_T1_FULL $WAFF/test_flirt_affine.nii.gz -nmi \
-    | awk '{print int(1000*$3)}');
-	SIM_GREEDY=$(c3d $TEMP_T1_FULL $WAFF/test_greedy_affine.nii.gz -nmi \
-    | awk '{print int(1000*$3)}');
-
-	if [[ $SIM_FLIRT -gt $SIM_GREEDY ]]; then
-		cp -a $WAFF/flirt_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
-    ln -sf $WAFF/test_flirt_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
-	else
-		cp -a $WAFF/greedy_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
-    ln -sf $WAFF/test_greedy_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
-	fi
+  # Store the transform
+  cp -a $WAFF/greedy_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
+  ln -sf $WAFF/test_greedy_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
 
   # Compute the inverse matrix
   c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT

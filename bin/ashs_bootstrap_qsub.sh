@@ -104,12 +104,12 @@ if [[ -f $BOOT_WARP && $ASHS_SKIP ]]; then
   echo "Skipping ANTS registration"
 else
   # TODO: use the right parameters!
-  greedy -d 3\
+  time greedy -d 3\
     -gm $TMPDIR/mask.nii.gz \
     -m NCC 2x2x2 \
     -i $TMPDIR/fixed_hw.nii.gz $TMPDIR/moving_hw.nii.gz \
     -o $BOOT_WARP \
-    -s 0.812 0.331 -e 0.25 -n 60x60x20
+    -e 0.5 -n 60x60x20
 fi
 
 # Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
@@ -121,7 +121,7 @@ ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
 
 greedy -d 3 \
   -rm $ATLAS_TSE $ATLAS_RESLICE \
-  -ri LABEL 0.24 -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
+  -ri ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
   -rf $SUBJ_SIDE_TSE_NATCHUNK \
   -r $WREG/sqrt_inv.mat,-1 $BOOT_WARP $WREG/sqrt_fwd.mat
 

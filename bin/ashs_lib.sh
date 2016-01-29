@@ -70,6 +70,26 @@ function fake_qsub()
   TMPDIR=$PARENTTMPDIR
 }
 
+# Function to run a job in parallels
+function gnu_parallel_qsub()
+{
+  local MYNAME=$1
+  shift 1
+
+  local PARENTTMPDIR=$TMPDIR
+  TMPDIR=$(get_tmpdir)
+  export TMPDIR
+
+  export NSLOTS=1
+
+  echo "Starting parallel job $MYNAME"
+  bash $* &> $ASHS_WORK/dump/${MYNAME}.o$(date +%Y%m%d_%H%M%S)
+  echo "Parallel job $MYNAME done"
+
+  rm -rf $TMPDIR
+  TMPDIR=$PARENTTMPDIR
+}
+
 
 # Submit a job to the queue (or just run job) and wait until it finishes
 function qsubmit_sync()
@@ -95,18 +115,28 @@ function qsubmit_single_array()
   # Generate unique name to prevent clashing with qe
   local UNIQ_NAME=${NAME}_${$}
 
-  for p1 in $PARAM; do
+  # Special handling for GNU parallel
+  if [[ $ASHS_USE_PARALLEL ]]; then
 
-    if [[ $ASHS_USE_QSUB ]]; then
+    export -f gnu_parallel_qsub
+    parallel -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
 
-      qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1} $* $p1
+  else
 
-    else
+    for p1 in $PARAM; do
 
-      fake_qsub ${NAME}_${p1} $* $p1
+      if [[ $ASHS_USE_QSUB ]]; then
 
-    fi
-  done
+        qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1} $* $p1
+
+      else
+
+        fake_qsub ${NAME}_${p1} $* $p1
+
+      fi
+    done
+
+  fi
 
   # Wait for the jobs to be done
   qwait "${UNIQ_NAME}_*"
@@ -125,20 +155,30 @@ function qsubmit_double_array()
   # Generate unique name to prevent clashing with qe
   local UNIQ_NAME=${NAME}_${$}
 
-  for p1 in $PARAM1; do
-    for p2 in $PARAM2; do
+  if [[ $ASHS_USE_PARALLEL ]]; then
 
-      if [[ $ASHS_USE_QSUB ]]; then
+    export -f gnu_parallel_qsub
+    export -f get_tmpdir
+    parallel -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
 
-        qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1}_${p2} $* $p1 $p2
+  else
 
-      else
+    for p1 in $PARAM1; do
+      for p2 in $PARAM2; do
 
-        fake_qsub ${NAME}_${p1}_${p2} $* $p1 $p2
+        if [[ $ASHS_USE_QSUB ]]; then
 
-      fi
+          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1}_${p2} $* $p1 $p2
+
+        else
+
+          fake_qsub ${NAME}_${p1}_${p2} $* $p1 $p2
+
+        fi
+      done
     done
-  done
+
+  fi
 
   # Wait for the jobs to be done
   qwait "${UNIQ_NAME}_*"
@@ -334,6 +374,15 @@ function ashs_align_t1t2()
     c3d $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
       -reslice-identity -type short -o $TMPDIR/mprage_to_tse_iso.nii.gz
 
+    # Use greedy affine mode to perform registration 
+    greedy -d 3 -a -dof 6 -m MI -n 100x100x10 \
+      -i $TMPDIR/tse_iso.nii.gz $TMPDIR/mprage_to_tse_iso.nii.gz \
+      -o $SUBJ_AFF_T2T1_MAT 
+
+    # Invert the matrix
+    c3d_affine_tool $SUBJ_AFF_T2T1_MAT -inv -o $SUBJ_AFF_T2T1_INVMAT
+
+<<'FLIRT_OLD'
     # Run flirt with T2 as reference (does it matter at this point?)
     flirt -v -ref $TMPDIR/tse_iso.nii.gz -in $TMPDIR/mprage_to_tse_iso.nii.gz \
       -omat $WFSL/flirt_intermediate.mat -cost normmi -dof 6 ${ASHS_FLIRT_MULTIMODAL_OPTS?}
@@ -343,6 +392,7 @@ function ashs_align_t1t2()
 			-src $TMPDIR/mprage_to_tse_iso.nii.gz \
       -fsl2ras -inv -oitk $WFSL/flirt_t2_to_t1_ITK.txt \
       -o $SUBJ_AFF_T2T1_MAT -inv -o $SUBJ_AFF_T2T1_INVMAT
+FLIRT_OLD
 
   fi
 }
@@ -376,7 +426,7 @@ function ashs_ants_pairwise()
   else
 
     # Are we running multi-component registration
-    if [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print $1 == 0.0}') -eq 1 ]]; then
+    if [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print ($1 == 0.0)}') -eq 1 ]]; then
 
       # T1 has a zero weight
       local METRIC_TERM="-i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP"
@@ -384,7 +434,7 @@ function ashs_ants_pairwise()
     else
 
       # T1 has non-zero weight
-      local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print 1.0 - $1}')
+      local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print (1.0 - $1)}')
       local METRIC_TERM=\
         "-w $T2WGT \
          -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
@@ -395,13 +445,12 @@ function ashs_ants_pairwise()
     # Perform greedy affine registration with mask and NCC metric
     time greedy -d 3 -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
-      -m NCC 4x4x4 -n 60x60x0
+      -m NCC 2x2x2 -n 60x60x0 -float 
 
     # Perform greedy deformable registration with NCC metric
     time greedy -d 3 -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
-      -n 60x60x20 -s 1.2 0.4 -e 0.5 \
-      -m NCC 4x4x4 
+      -m NCC 2x2x2 -n 60x60x20 -e 0.5 -float
 
     # TODO: restore the config stuff
     ### -n $ASHS_PAIRWISE_ANTS_ITER -e $ASHS_PAIRWISE_ANTS_STEPSIZE
@@ -425,10 +474,9 @@ function ashs_ants_pairwise()
   else
 
     # Apply full composite warp from atlas TSE to subject TSE
-    # TODO: make Greedy read scales in mm/vox units and use ASHS_LABEL_SMOOTHING
     greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
       -rm $ATLAS_TSE $ATLAS_RESLICE \
-      -ri LABEL 0.24 -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
+      -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
       -r $SUBJ_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T2TEMP_TRAN
 
   fi
