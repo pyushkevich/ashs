@@ -103,10 +103,11 @@ done
 if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
   # Warp the BET mask
-  WarpImageMultiTransform 3 $ASHS_ATLAS/template/template_bet_mask.nii.gz \
-    $TMPDIR/icv.nii.gz -R $ASHS_WORK/mprage.nii.gz \
-    -i $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-    $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
+  greedy -d 3 \
+    -rm $ASHS_ATLAS/template/template_bet_mask.nii.gz $TMPDIR/icv.nii.gz \
+    -rf $ASHS_WORK/mprage.nii.gz \
+    -r $ASHS_WORK/affine_t1_to_template/t1_to_template_affine_inv.mat \
+       $ASHS_WORK/ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz
 
   # Get T1 voxel volume
   VVOX=$(voxel_size $TMPDIR/icv.nii.gz)
