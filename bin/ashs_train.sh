@@ -131,7 +131,7 @@ while getopts "C:D:L:w:s:x:q:r:NdhVQP" opt; do
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
     L) ASHS_LABELFILE=$(dereflink $OPTARG);;
-    w) ASHS_WORK=$(dereflink $OPTARG);;
+    w) ASHS_WORK=$OPTARG;;
 		s) STAGE_SPEC=$OPTARG;;
 		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
     q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
@@ -214,6 +214,9 @@ fi
  
 # Create the working directory and the dump directory
 mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
+
+# Get rid of symlinks in the work path and make it global
+ASHS_WORK=$(dereflink $ASHS_WORK)
 
 # Whether we are using QSUB
 if [[ $ASHS_USE_QSUB ]]; then

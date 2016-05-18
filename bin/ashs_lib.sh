@@ -757,9 +757,9 @@ function ashs_average_images_normalized()
   # Perform average for each line
   for ((i=1;i<=$NBATCH;i++)); do
 
-    c3d $REFIMG -origin 50% -popas R \
+    c3d $REFIMG -popas R \
       $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
-      -foreach -stretch 0% 99% 0 1000 -insert R 1 -origin 50% -reslice-identity -endfor \
+      -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
       -accum -add -endaccum \
       -o $TMPDIR/avg_batch_$i.nii.gz
 
@@ -789,13 +789,13 @@ function ashs_template_single_reg()
   local RESLICE=$TEMPLATE_DIR/atlas_${ID}_to_template_reslice.nii.gz
 
   # Perform affine registration to template
-  greedy -d 3 \
+  time greedy -d 3 \
     -a -i $TEMPLATE $MPRAGE -o $AFFM \
     -ia-identity -m NCC 2x2x2 \
     -n 100x40x0
   
   # Perform deformable registration to template
-  greedy -d 3 \
+  time greedy -d 3 \
     -i $TEMPLATE $MPRAGE -o $WARP \
     -it $AFFM -m NCC 2x2x2 \
     -n 30x90x20
