@@ -190,6 +190,9 @@ ATLAS_T2=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $3}') );
 ATLAS_LS=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $4}') );
 ATLAS_RS=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $5}') );
 
+# Sides
+SIDES="left right"
+
 # Get the number of atlases
 N=${#ATLAS_ID[*]}
 
@@ -236,6 +239,7 @@ fi
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST
+export SIDES
 
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then

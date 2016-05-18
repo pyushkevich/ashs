@@ -769,7 +769,7 @@ function ashs_average_images_normalized()
   c3d $(for ((i=1;i<=$NBATCH;i++)); do echo $TMPDIR/avg_batch_$i.nii.gz; done) \
     -accum -add -endaccum \
     -scale $(echo $N | awk '{print 1.0 / $1}') \
-    -o $OUT
+    -sharpen -o $OUT
 
   # Remove intermediates
   rm -rf $TMPDIR/avglist.txt $TMPDIR/avg_batch_*.nii.gz
@@ -797,7 +797,7 @@ function ashs_template_single_reg()
     time greedy -d 3 \
       -a -i $TEMPLATE $MPRAGE -o $RIGM \
       -ia-identity -m NCC 2x2x2 \
-      -n 100x40x0 -dof 6
+      -n 60x20x0 -dof 6
 
     # Reslice to template
     greedy -d 3 -float \
@@ -806,23 +806,63 @@ function ashs_template_single_reg()
   else
 
     # Perform affine registration to template
-    time greedy -d 3 -float \
+    time greedy -d 3 \
       -a -i $TEMPLATE $MPRAGE -o $AFFM \
       -ia-identity -m NCC 2x2x2 \
-      -n 100x40x0
+      -n 60x20x0
     
     # Perform deformable registration to template
-    time greedy -d 3 -float \
+    time greedy -d 3 \
       -i $TEMPLATE $MPRAGE -o $WARP \
       -it $AFFM -m NCC 2x2x2 \
-      -n 30x90x20
+      -n $ASHS_TEMPLATE_ANTS_ITER
 
     # Reslice to template
-    greedy -d 3 -float \
+    greedy -d 3 \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $WARP $AFFM
 
   fi
 }
+
+function ashs_template_reslice_seg()
+{
+  local id=${1?}
+  local side=${2?}
+  local TEMPLATE_DIR=$ASHS_WORK/template_build
+
+  greedy -d 3 \
+    -rf $TEMPLATE_DIR/atlastemplate.nii.gz \
+    -ri LABEL 0.2vox \
+    -rm $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
+        $TEMPLATE_DIR/atlas_${id}_to_template_reslice_seg_${side}.nii.gz \
+    -r \
+      $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz \
+      $TEMPLATE_DIR/atlas_${id}_to_template_affine.mat \
+      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat
+}
+
+function ashs_template_side_roi()
+{
+  local side=${1?}
+  local TEMPLATE_DIR=$ASHS_WORK/template_build
+
+  # Average the segmentations and create a target ROI with desired resolution
+  c3d \
+    $TEMPLATE_DIR/atlas_*_to_template_reslice_seg_${side}.nii.gz \
+    -foreach -thresh 0.5 inf 1 0 -endfor \
+    -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
+    -o $TEMPLATE_DIR/meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
+    -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
+    -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \
+    -o $TEMPLATE_DIR/refspace_${side}.nii.gz \
+    $TEMPLATE_DIR/atlastemplate.nii.gz -reslice-identity \
+    -o $TEMPLATE_DIR/refspace_mprage_${side}.nii.gz \
+    -push M -reslice-identity -thresh 0.5 inf 1 0 -o \
+    $TEMPLATE_DIR/refspace_meanseg_${side}.nii.gz
+
+  cp -a $TEMPLATE_DIR/refspace*${side}.nii.gz $ASHS_WORK/final/template/
+}
+
 
 # Build the template using SYN
 function ashs_atlas_build_template()
@@ -836,7 +876,7 @@ function ashs_atlas_build_template()
     for id in ${ATLAS_ID[*]}; do echo $ASHS_WORK/atlas/${id}/mprage.nii.gz; done))
 
   # Run the template code
-  if [[ -f atlastemplate.nii.gz && $ASHS_SKIP_ANTS ]]; then
+  if [[ -f $TEMPLATE_DIR/atlastemplate.nii.gz && $ASHS_SKIP_ANTS ]]; then
     echo "Skipping template building"
   else
 
@@ -845,17 +885,16 @@ function ashs_atlas_build_template()
     cp -av ${TEMPLATE_SRC[0]} $TEMPLATE_DIR/atlastemplate.nii.gz
 
     # Perform the iterations of template building
-    ASHS_TEMPLATE_ITER=2
-    ASHS_TEMPLATE_RIGID_ITER=1
-    for ((iter=0; iter < $ASHS_TEMPLATE_ITER; iter++)); do
+    for ((iter=0; iter < $ASHS_TEMPLATE_STAGES_TOTAL; iter++)); do
 
       local DO_RIGID=0
-      if [[ $iter -lt $ASHS_TEMPLATE_RIGID_ITER ]]; then
+      if [[ $iter -lt $ASHS_TEMPLATE_STAGES_RIGID ]]; then
         DO_RIGID=1
       fi
 
       # Register everybody to the template 
-      qsubmit_single_array "template_reg_${iter}" "${ATLAS_ID[*]}" $ASHS_ROOT/bin/ashs_function_qsub.sh \
+      qsubmit_single_array "template_reg_${iter}" "${ATLAS_ID[*]}" \
+        $ASHS_ROOT/bin/ashs_function_qsub.sh \
         ashs_template_single_reg $iter $DO_RIGID
 
       # Create a backup of previous iteration template
@@ -867,78 +906,33 @@ function ashs_atlas_build_template()
         $TEMPLATE_DIR/atlastemplate.nii.gz $TEMPLATE_DIR/atlastemplate_iter_${iter}.nii.gz \
         $TEMPLATE_DIR/atlas_*_to_template_reslice.nii.gz
 
-      # Shape update step !!!
-
-
+      # TODO: Shape update step !!!
     done
 
     # Copy the template into the final folder
-    ### mkdir -p $ASHS_WORK/final/template/
-    ### cp -av atlastemplate.nii.gz  $ASHS_WORK/final/template/template.nii.gz
+    mkdir -p $ASHS_WORK/final/template/
+    cp -av $TEMPLATE_DIR/atlastemplate.nii.gz $ASHS_WORK/final/template/template.nii.gz
 
   fi
 
-
-  return 
-
-    # We should now map everyone's segmentation into the template to build a mask
-    for side in left right; do
-
-      if [[ $ASHS_SKIP_ANTS && \
-            -f $ASHS_WORK/final/template/refspace_meanseg_${side}.nii.gz && \
-            -f $ASHS_WORK/final/template/refspace_mprage_${side}.nii.gz ]]
-      then
-        echo "Skipping template ROI definition"
-      else
-
-      # Create a working directory
-      mkdir -p mask_${side}
-      pushd mask_${side}
-
-      # Warp each segmentation
-      CMDLINE=""
-      for id in ${ATLAS_ID[*]}; do
-
-        WarpImageMultiTransform 3 $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
-          ${id}_seg_${side}.nii.gz -R ../atlastemplate.nii.gz \
-          ../atlas${id}_mprageWarp.nii.gz ../atlas${id}_mprageAffine.txt \
-          $ASHS_WORK/atlas/${id}/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt --use-NN
-
-        CMDLINE="$CMDLINE ${id}_seg_${side}.nii.gz"
-      done
-
-      # Average the segmentations and create a target ROI with desired resolution
-      c3d $CMDLINE \
-        -foreach -thresh 0.5 inf 1 0 -endfor -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
-        -o meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
-        -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
-        -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \
-        -o refspace_${side}.nii.gz \
-        ../atlastemplate.nii.gz -reslice-identity -o refspace_mprage_${side}.nii.gz \
-        -push M -reslice-identity -thresh 0.5 inf 1 0 -o refspace_meanseg_${side}.nii.gz
-
-      cp -a refspace*${side}.nii.gz $ASHS_WORK/final/template/
-
-      popd
-
-    fi
-
-  done
-
-  # Use the first image in the atlas set as the reference for histogram matching
-  if [[ $ASHS_SKIP && \
-        -f $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz && \
-        -f $ASHS_WORK/final/ref_hm/ref_tse.nii.gz ]]
+  # We should now map everyone's segmentation into the template to build a mask
+  if [[ $ASHS_SKIP_ANTS && \
+        -f $ASHS_WORK/final/template/refspace_meanseg_${side}.nii.gz && \
+        -f $ASHS_WORK/final/template/refspace_mprage_${side}.nii.gz ]]
   then
-    echo "Skipping defining the histogram matching references"
+    echo "Skipping template ROI definition"
   else
-    mkdir -p $ASHS_WORK/final/ref_hm
-    HMID=${ATLAS_ID[${ASHS_TARGET_ATLAS_FOR_HISTMATCH?}]}
-    cp -av $ASHS_WORK/atlas/$HMID/mprage.nii.gz $ASHS_WORK/final/ref_hm/ref_mprage.nii.gz
-    cp -av $ASHS_WORK/atlas/$HMID/tse.nii.gz $ASHS_WORK/final/ref_hm/ref_tse.nii.gz
-  fi
 
-  popd
+    # Warp each segmentation
+    qsubmit_double_array "template_reslice_seg" "${ATLAS_ID[*]}" "$SIDES" \
+      $ASHS_ROOT/bin/ashs_function_qsub.sh \
+      ashs_template_reslice_seg 
+
+    qsubmit_single_array "template_create_roi" "$SIDES" \
+      $ASHS_ROOT/bin/ashs_function_qsub.sh \
+      ashs_template_side_roi 
+
+  fi
 }
 
 # Resample all atlas images to the template

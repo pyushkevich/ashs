@@ -75,6 +75,10 @@ ASHS_FLIRT_MULTIMODAL_OPTS="-searchrx -5 5 -searchry -5 5 -searchrz -5 5 -coarse
 # documentation for the meaning of this.
 ASHS_TEMPLATE_ANTS_ITER="60x20x0"
 
+# Number of stages for template building, total and for rigid registration
+ASHS_TEMPLATE_STAGES_TOTAL=4
+ASHS_TEMPLATE_STAGES_RIGID=1
+
 # The amount of dilation applied to the average hippocampus mask in order to
 # create a registration mask.
 ASHS_TEMPLATE_ROI_DILATION="10x10x10vox"
