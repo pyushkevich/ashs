@@ -43,6 +43,9 @@ MYWORK=$ASHS_WORK/atlas/$id
 WFSL=$MYWORK/flirt_t2_to_t1
 mkdir -p $MYWORK $WFSL
 
+# Parse the manifest file for this ID
+FILES=($(cat $ASHS_TRAIN_MANIFEST | awk -v id=$id '$1 == id { print $2,$3,$4,$5 }'))
+
 # Copy the images into the working directory and set the transforms
 # of the segmentations to equal the transforms of the input images.
 if [[ $ASHS_SKIP && \
@@ -52,10 +55,10 @@ then
   echo "Skipping initial image copy for subject $id"
 else 
   $ASHS_BIN/c3d -type ushort \
-    $2 -o $MYWORK/mprage.nii.gz \
-    $3 -o $MYWORK/tse.nii.gz -popas REF \
-    -push REF $4 -copy-transform -o $MYWORK/seg_left.nii.gz \
-    -push REF $5 -copy-transform -o $MYWORK/seg_right.nii.gz
+    ${FILES[0]} -o $MYWORK/mprage.nii.gz \
+    ${FILES[1]} -o $MYWORK/tse.nii.gz -popas REF \
+    -push REF ${FILES[2]} -copy-transform -o $MYWORK/seg_left.nii.gz \
+    -push REF ${FILES[3]} -copy-transform -o $MYWORK/seg_right.nii.gz
 fi
 
 # Peform registration between the two modalities

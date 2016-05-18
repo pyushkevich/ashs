@@ -52,7 +52,7 @@ function get_tmpdir()
   # this will create a subdirectory in /tmp
   echo $(mktemp -d -t ashs.XXXXXXXX)
 }
-
+ 
 # Simulate qsub environment in bash (i.e., create and set tempdir)
 # This function expects the name of the job as first parameter
 function fake_qsub()
@@ -77,7 +77,9 @@ function gnu_parallel_qsub()
   shift 1
 
   local PARENTTMPDIR=$TMPDIR
+  echo "here"
   TMPDIR=$(get_tmpdir)
+  echo "there $TMPDIR"
   export TMPDIR
 
   export NSLOTS=1
@@ -119,6 +121,7 @@ function qsubmit_single_array()
   if [[ $ASHS_USE_PARALLEL ]]; then
 
     export -f gnu_parallel_qsub
+    export -f get_tmpdir
     parallel -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
 
   else
@@ -732,60 +735,138 @@ BLOCK1
 function ashs_atlas_initialize_directory()
 {
   # Initialize Directory
-  for ((i=0;i<$N;i++)); do
-    id=${ATLAS_ID[i]}
-    qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_atlas_initdir_${id}" \
-      $ASHS_ROOT/bin/ashs_atlas_initdir_qsub.sh \
-        $id ${ATLAS_T1[i]} ${ATLAS_T2[i]} ${ATLAS_LS[i]} ${ATLAS_RS[i]}
+  qsubmit_single_array "ashs_atlas_init" "${ATLAS_ID[*]}" \
+    $ASHS_ROOT/bin/ashs_atlas_initdir_qsub.sh 
+}
+
+# Average a bunch of images with rudimentary normalization
+function ashs_average_images_normalized()
+{
+  # Read all parameters
+  OUT=${1?}
+  REFIMG=${2?}
+  shift 2
+
+  # Break images into batches of 5 for averaging
+  printf "%s %s %s %s %s\n" $@ > $TMPDIR/avglist.txt
+
+  # Number of batches
+  local N=$#
+  local NBATCH=$(cat $TMPDIR/avglist.txt | wc -l)
+
+  # Perform average for each line
+  for ((i=1;i<=$NBATCH;i++)); do
+
+    c3d $REFIMG -origin 50% -popas R \
+      $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
+      -foreach -stretch 0% 99% 0 1000 -insert R 1 -origin 50% -reslice-identity -endfor \
+      -accum -add -endaccum \
+      -o $TMPDIR/avg_batch_$i.nii.gz
+
   done
 
-  # Wait for jobs to complete
-  qwait "ashs_atlas_initdir_*"
+  # Add the batch averages up
+  c3d $(for ((i=1;i<=$NBATCH;i++)); do echo $TMPDIR/avg_batch_$i.nii.gz; done) \
+    -accum -add -endaccum \
+    -scale $(echo $N | awk '{print 1.0 / $1}') \
+    -o $OUT
+
+  # Remove intermediates
+  rm -rf $TMPDIR/avglist.txt $TMPDIR/avg_batch_*.nii.gz
+}
+
+function ashs_template_single_reg()
+{
+  local TEMPLATE_DIR=$ASHS_WORK/template_build
+  local ITER=${1?}
+  local ID=${2?}
+
+  local TEMPLATE=$TEMPLATE_DIR/atlastemplate.nii.gz
+  local MPRAGE=$ASHS_WORK/atlas/$ID/mprage.nii.gz
+
+  local AFFM=$TEMPLATE_DIR/atlas_${ID}_to_template_affine.mat
+  local WARP=$TEMPLATE_DIR/atlas_${ID}_to_template_warp.nii.gz
+  local RESLICE=$TEMPLATE_DIR/atlas_${ID}_to_template_reslice.nii.gz
+
+  # Perform affine registration to template
+  greedy -d 3 \
+    -a -i $TEMPLATE $MPRAGE -o $AFFM \
+    -ia-identity -m NCC 2x2x2 \
+    -n 100x40x0
+  
+  # Perform deformable registration to template
+  greedy -d 3 \
+    -i $TEMPLATE $MPRAGE -o $WARP \
+    -it $AFFM -m NCC 2x2x2 \
+    -n 30x90x20
+
+  # Reslice to template
+  greedy -d 3 \
+    -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $WARP $AFFM
 }
 
 # Build the template using SYN
 function ashs_atlas_build_template()
 {
   # All work is done in the template directory
-  mkdir -p $ASHS_WORK/template_build
-  pushd $ASHS_WORK/template_build
+  local TEMPLATE_DIR=$ASHS_WORK/template_build
+  mkdir -p $TEMPLATE_DIR
 
-  # Populate
-  CMDLINE=""
-  for id in ${ATLAS_ID[*]}; do
-    ln -sf $ASHS_WORK/atlas/${id}/mprage.nii.gz ./${id}_mprage.nii.gz
-    CMDLINE="$CMDLINE ${id}_mprage.nii.gz"
-  done
+  # Create the list of all input files
+  local TEMPLATE_SRC=($( \
+    for id in ${ATLAS_ID[*]}; do echo $ASHS_WORK/atlas/${id}/mprage.nii.gz; done))
 
   # Run the template code
   if [[ -f atlastemplate.nii.gz && $ASHS_SKIP_ANTS ]]; then
     echo "Skipping template building"
   else
-    export ANTSPATH=$ASHS_ANTS/
-    export ANTS_QSUB_OPTS=$QOPTS
-    buildtemplateparallel.sh -d 3 -o atlas -m ${ASHS_TEMPLATE_ANTS_ITER?} -r 1 -t GR -s CC $CMDLINE
-    
-    # Compress the warps
-    for id in ${ATLAS_ID[*]}; do
-      shrink_warp 3 atlas${id}_mprageWarp.nii.gz atlas${id}_mprageWarp.nii.gz
-      shrink_warp 3 atlas${id}_mprageInverseWarp.nii.gz atlas${id}_mprageInverseWarp.nii.gz
+
+    # Compute the initial average
+    qsubmit_sync "template_avg" $ASHS_ROOT/bin/ashs_function_qsub.sh \
+      ashs_average_images_normalized \
+      $TEMPLATE_DIR/atlastemplate.nii.gz ${TEMPLATE_SRC[0]} \
+      ${TEMPLATE_SRC[*]}
+
+    # Perform the iterations of template building
+    ASHS_TEMPLATE_ITER=1
+    for ((iter=0; iter < $ASHS_TEMPLATE_ITER; iter++)); do
+
+      # Register everybody to the template 
+      qsubmit_single_array "template_reg_${iter}" "${ATLAS_ID[*]}" $ASHS_ROOT/bin/ashs_function_qsub.sh \
+        ashs_template_single_reg $iter
+
+      # Create a backup of previous iteration template
+      cp -av $TEMPLATE_DIR/atlastemplate.nii.gz $TEMPLATE_DIR/atlastemplate_iter_${iter}.nii.gz
+
+      # Average the registered images
+      qsubmit_sync "template_avg" $ASHS_ROOT/bin/ashs_function_qsub.sh \
+        ashs_average_images_normalized \
+        $TEMPLATE_DIR/atlastemplate.nii.gz $TEMPLATE_DIR/atlastemplate_iter_${iter}.nii.gz \
+        $TEMPLATE_DIR/atlas_*_to_template_reslice.nii.gz
+
+      # Shape update step !!!
+
+
     done
 
     # Copy the template into the final folder
-    mkdir -p $ASHS_WORK/final/template/
-    cp -av atlastemplate.nii.gz  $ASHS_WORK/final/template/template.nii.gz
+    ### mkdir -p $ASHS_WORK/final/template/
+    ### cp -av atlastemplate.nii.gz  $ASHS_WORK/final/template/template.nii.gz
 
   fi
 
-  # We should now map everyone's segmentation into the template to build a mask
-  for side in left right; do
 
-    if [[ $ASHS_SKIP_ANTS && \
-          -f $ASHS_WORK/final/template/refspace_meanseg_${side}.nii.gz && \
-          -f $ASHS_WORK/final/template/refspace_mprage_${side}.nii.gz ]]
-    then
-      echo "Skipping template ROI definition"
-    else
+  return 
+
+    # We should now map everyone's segmentation into the template to build a mask
+    for side in left right; do
+
+      if [[ $ASHS_SKIP_ANTS && \
+            -f $ASHS_WORK/final/template/refspace_meanseg_${side}.nii.gz && \
+            -f $ASHS_WORK/final/template/refspace_mprage_${side}.nii.gz ]]
+      then
+        echo "Skipping template ROI definition"
+      else
 
       # Create a working directory
       mkdir -p mask_${side}
@@ -1262,7 +1343,7 @@ function ashs_check_train()
   for id in ${ATLAS_ID[*]}; do
 
     if [[ $STAGE -ge 0 ]]; then
-      for image in tse.nii.gz mprage.nii.gz flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
+      for image in tse.nii.gz mprage.nii.gz flirt_t2_to_t1/flirt_t2_to_t1.mat \
                    seg_left.nii.gz seg_right.nii.gz
       do
         if [[ ! -f atlas/$id/$image ]]; then

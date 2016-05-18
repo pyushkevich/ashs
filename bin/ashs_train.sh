@@ -42,7 +42,12 @@ function usage()
 		  -x file           Outer cross-validation loop specification file (see below)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
 		                    exists, don't run ANTS/FLIRT again
+		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. By default,
+		                    the whole ashs_train job runs in a single process. If you are on a cluster 
+                        that has SGE, you should really use this flag
 		  -q string         List of additional options to pass to qsub (Sun Grid Engine)
+      -P                Use GNU parallel to run on multiple cores on the local machine. You need to
+                        have GNU parallel installed.
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		  -V                Display version information and exit
 
@@ -99,6 +104,21 @@ function usage()
 	USAGETEXT
 }
 
+# Dereference a link - different calls on different systems
+function dereflink ()
+{
+  if [[ $(uname) == "Darwin" ]]; then
+    local SLTARG=$(readlink $1)
+    if [[ $SLTARG ]]; then
+      echo $SLTARG
+    else
+      echo $1
+    fi
+  else
+    readlink -f $1
+  fi
+}
+
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
@@ -106,18 +126,20 @@ if [[ $# -lt 1 ]]; then
 fi
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:NdhV" opt; do
+while getopts "C:D:L:w:s:x:q:r:NdhVQP" opt; do
   case $opt in
 
-    D) LISTFILE=$(readlink -f $OPTARG);;
-    L) ASHS_LABELFILE=$(readlink -f $OPTARG);;
-    w) ASHS_WORK=$(readlink -f $OPTARG);;
+    D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
+    L) ASHS_LABELFILE=$(dereflink $OPTARG);;
+    w) ASHS_WORK=$(dereflink $OPTARG);;
 		s) STAGE_SPEC=$OPTARG;;
 		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
-    q) QOPTS=$OPTARG;;
-    C) ASHS_CONFIG=$(readlink -f $OPTARG);;
-    r) ASHS_HEURISTICS=$(readlink -f $OPTARG);;
-    x) ASHS_XVAL=$(readlink -f $OPTARG);;
+    q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
+    Q) ASHS_USE_QSUB=1;;
+    P) ASHS_USE_PARALLEL=1;;
+    C) ASHS_CONFIG=$(dereflink $OPTARG);;
+    r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
+    x) ASHS_XVAL=$(dereflink $OPTARG);;
     d) set -x -e;;
     h) usage; exit 0;;
     V) vers; exit 0;;
@@ -131,13 +153,13 @@ done
 if [[ ! $ASHS_ROOT ]]; then
   echo "Please set ASHS_ROOT to the ASHS root directory before running $0"
   exit -2
-elif [[ $ASHS_ROOT != $(readlink -f $ASHS_ROOT) ]]; then
+elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
   echo "ASHS_ROOT must point to an absolute path, not a relative path"
   exit -2
 fi
 
 # Check the listfile
-if [[ ! -f $LISTFILE ]]; then
+if [[ ! -f $ASHS_TRAIN_MANIFEST ]]; then
   echo "Missing data list file (-D)"
   exit 1;
 fi
@@ -145,6 +167,12 @@ fi
 if [[ ! -f $ASHS_LABELFILE ]]; then
   echo "Missing label description file (-L)"
   exit -1;
+fi
+
+# Check that parallel and qsub are not both on
+if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
+  echo "Cannot use SGE (-Q) and GNU Parallel (-P) at the same time"
+  exit -2
 fi
 
 # Set the config file
@@ -156,11 +184,11 @@ fi
 source $ASHS_ROOT/bin/ashs_lib.sh
 
 # Get the list of ids
-ATLAS_ID=( $(cat $LISTFILE | awk '! /^[ \t]*#/ {print $1}') );
-ATLAS_T1=( $(cat $LISTFILE | awk '! /^[ \t]*#/ {print $2}') );
-ATLAS_T2=( $(cat $LISTFILE | awk '! /^[ \t]*#/ {print $3}') );
-ATLAS_LS=( $(cat $LISTFILE | awk '! /^[ \t]*#/ {print $4}') );
-ATLAS_RS=( $(cat $LISTFILE | awk '! /^[ \t]*#/ {print $5}') );
+ATLAS_ID=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $1}') );
+ATLAS_T1=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $2}') );
+ATLAS_T2=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $3}') );
+ATLAS_LS=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $4}') );
+ATLAS_RS=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $5}') );
 
 # Get the number of atlases
 N=${#ATLAS_ID[*]}
@@ -187,12 +215,24 @@ fi
 # Create the working directory and the dump directory
 mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 
-# The training module MUST use qsub
-ASHS_USE_QSUB=1
+# Whether we are using QSUB
+if [[ $ASHS_USE_QSUB ]]; then
+  if [[ ! $SGE_ROOT ]]; then
+    echo "-Q flag used, but SGE is not present."
+    exit -1;
+  fi
+  echo "Using SGE with root $SGE_ROOT and options $QOPTS"
+elif [[ $ASHS_USE_PARALLEL ]]; then
+  echo "Using GNU parallel"
+else
+  echo "Not using SGE or GNU parallel. This will take FOREVER!!!"
+fi
+
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS
+export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST
 
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then
