@@ -779,30 +779,49 @@ function ashs_template_single_reg()
 {
   local TEMPLATE_DIR=$ASHS_WORK/template_build
   local ITER=${1?}
-  local ID=${2?}
+  local DO_RIGID=${2?}
+  local ID=${3?}
 
   local TEMPLATE=$TEMPLATE_DIR/atlastemplate.nii.gz
   local MPRAGE=$ASHS_WORK/atlas/$ID/mprage.nii.gz
 
+  local RIGM=$TEMPLATE_DIR/atlas_${ID}_to_template_rigid.mat
   local AFFM=$TEMPLATE_DIR/atlas_${ID}_to_template_affine.mat
   local WARP=$TEMPLATE_DIR/atlas_${ID}_to_template_warp.nii.gz
   local RESLICE=$TEMPLATE_DIR/atlas_${ID}_to_template_reslice.nii.gz
 
-  # Perform affine registration to template
-  time greedy -d 3 \
-    -a -i $TEMPLATE $MPRAGE -o $AFFM \
-    -ia-identity -m NCC 2x2x2 \
-    -n 100x40x0
-  
-  # Perform deformable registration to template
-  time greedy -d 3 \
-    -i $TEMPLATE $MPRAGE -o $WARP \
-    -it $AFFM -m NCC 2x2x2 \
-    -n 30x90x20
+  # If doing rigid-only 
+  if [[ $DO_RIGID -eq 1 ]]; then
 
-  # Reslice to template
-  greedy -d 3 \
-    -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $WARP $AFFM
+    # Perform affine registration to template
+    time greedy -d 3 \
+      -a -i $TEMPLATE $MPRAGE -o $RIGM \
+      -ia-identity -m NCC 2x2x2 \
+      -n 100x40x0 -dof 6
+
+    # Reslice to template
+    greedy -d 3 -float \
+      -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $RIGM
+
+  else
+
+    # Perform affine registration to template
+    time greedy -d 3 -float \
+      -a -i $TEMPLATE $MPRAGE -o $AFFM \
+      -ia-identity -m NCC 2x2x2 \
+      -n 100x40x0
+    
+    # Perform deformable registration to template
+    time greedy -d 3 -float \
+      -i $TEMPLATE $MPRAGE -o $WARP \
+      -it $AFFM -m NCC 2x2x2 \
+      -n 30x90x20
+
+    # Reslice to template
+    greedy -d 3 -float \
+      -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $WARP $AFFM
+
+  fi
 }
 
 # Build the template using SYN
@@ -821,19 +840,23 @@ function ashs_atlas_build_template()
     echo "Skipping template building"
   else
 
-    # Compute the initial average
-    qsubmit_sync "template_avg" $ASHS_ROOT/bin/ashs_function_qsub.sh \
-      ashs_average_images_normalized \
-      $TEMPLATE_DIR/atlastemplate.nii.gz ${TEMPLATE_SRC[0]} \
-      ${TEMPLATE_SRC[*]}
+    # Make the first image be the initial template 
+    # TODO: in the future allow user to supply template image
+    cp -av ${TEMPLATE_SRC[0]} $TEMPLATE_DIR/atlastemplate.nii.gz
 
     # Perform the iterations of template building
-    ASHS_TEMPLATE_ITER=1
+    ASHS_TEMPLATE_ITER=2
+    ASHS_TEMPLATE_RIGID_ITER=1
     for ((iter=0; iter < $ASHS_TEMPLATE_ITER; iter++)); do
+
+      local DO_RIGID=0
+      if [[ $iter -lt $ASHS_TEMPLATE_RIGID_ITER ]]; then
+        DO_RIGID=1
+      fi
 
       # Register everybody to the template 
       qsubmit_single_array "template_reg_${iter}" "${ATLAS_ID[*]}" $ASHS_ROOT/bin/ashs_function_qsub.sh \
-        ashs_template_single_reg $iter
+        ashs_template_single_reg $iter $DO_RIGID
 
       # Create a backup of previous iteration template
       cp -av $TEMPLATE_DIR/atlastemplate.nii.gz $TEMPLATE_DIR/atlastemplate_iter_${iter}.nii.gz
