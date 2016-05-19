@@ -290,14 +290,21 @@ function ashs_atlas_vars()
   set -e
   local tid=${1?}
   local ATLAS_MODE=${2?}
+  local TDIR
 
-  # If in atlas mode complain
   if [[ $ATLAS_MODE -eq 1 ]]; then
+
+    # If in atlas-building mode, things are organized in a directory structure
     TDIR=$ASHS_WORK/atlas/${tid}
-    ### ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
-    ### ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_chunktemp_${side}InverseWarp.nii.gz
+    ATLAS_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1/flirt_t2_to_t1.mat
+    ATLAS_AFF_T1TEMP_MAT=$TDIR/affine_t1_to_template/t1_to_template_affine.mat
+
   else
+
     TDIR=$ASHS_ATLAS/train/train${tid} 
+    ATLAS_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1_ITK.txt
+    ATLAS_AFF_T1TEMP_MAT=$TDIR/ants_t1_to_tempAffine.txt
+
   fi
 
   # Basic images
@@ -305,11 +312,9 @@ function ashs_atlas_vars()
   ATLAS_TSE=$TDIR/tse.nii.gz
 
   # Transformations between T1 and T2
-  ATLAS_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1_ITK.txt
   ATLAS_AFF_T2T1_INVMAT="$ATLAS_AFF_T2T1_MAT,-1"
 
   # Unit transformations between T1 and template
-  ATLAS_AFF_T1TEMP_MAT=$TDIR/ants_t1_to_tempAffine.txt
   ATLAS_AFF_T1TEMP_INVMAT="$ATLAS_AFF_T1TEMP_MAT,-1"
 }  
 
@@ -319,14 +324,19 @@ function ashs_atlas_side_vars()
   local tid=${1?}
   local side=${2?}
   local ATLAS_MODE=${3?}
-  local TDIR=$ASHS_ATLAS/train/train${tid}
+  local TDIR
 
   ashs_atlas_vars $tid $ATLAS_MODE
 
   # To save space, the atlas only stores chunk-wise warps to template
   if [[ $ATLAS_MODE -eq 0 ]]; then
+    TDIR=$ASHS_ATLAS/train/train${tid} 
     ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
     ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_chunktemp_${side}InverseWarp.nii.gz
+  else
+    TDIR=$ASHS_WORK/atlas/${tid}
+    ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz
+    ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz
   fi
 
   # Composite transformations from T1 and template
@@ -406,14 +416,15 @@ FLIRT_OLD
 function ashs_ants_pairwise()
 {
   # Check required variables
-  local side=${1?}
-  local tid=${2?}
-  local WREG=${3?}
-	local ATLAS_MODE=${4?}
+  local SUBJDIR=${1?}
+  local side=${2?}
+  local tid=${3?}
+  local WREG=${4?}
+	local ATLAS_MODE=${5?}
 
   # Get the subject data
-  ashs_subj_vars $ASHS_WORK
-  ashs_subj_side_vars $ASHS_WORK $side
+  ashs_subj_vars $SUBJDIR
+  ashs_subj_side_vars $SUBJDIR $side
   ashs_atlas_side_vars $tid $side $ATLAS_MODE
 
   # Define the local transform variables
@@ -574,6 +585,8 @@ function ashs_label_fusion()
   id=${1?}
   FNOUT=${2?}
   POSTERIOR=${3?}
+  TRAIN=${4?}
+  side=${5?}
 
 cat <<-BLOCK1
 	Script: ashs_atlas_pairwise.sh
@@ -830,6 +843,7 @@ function ashs_template_reslice_seg()
   local side=${2?}
   local TEMPLATE_DIR=$ASHS_WORK/template_build
 
+  # Reslice the segmentation into the template space
   greedy -d 3 \
     -rf $TEMPLATE_DIR/atlastemplate.nii.gz \
     -ri LABEL 0.2vox \
@@ -935,9 +949,63 @@ function ashs_atlas_build_template()
   fi
 }
 
+# Function to resample TSE to template space for atlases
+function ashs_atlas_resample_tse_subj()
+{
+  local id=${1?}
+  
+  # Define the common variables in the atlas destination directory
+  local ADIR=$ASHS_WORK/atlas/$id
+  mkdir -p $ADIR/ants_t1_to_temp $ADIR/affine_t1_to_template
+  ashs_subj_vars $ADIR
+
+  # Some variables for usable stuff in the template building directory
+  local TEMPLATE_DIR=$ASHS_WORK/template_build
+  local TEMP_WARP=$TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz
+  local TEMP_AFF=$TEMPLATE_DIR/atlas_${id}_to_template_affine.mat
+
+  # Copy the warps from the template building directory to the atlas directory
+  cp -av $TEMP_WARP $SUBJ_T1TEMP_WARP
+  cp -av $TEMP_AFF $SUBJ_AFF_T1TEMP_MAT
+
+  # We need to generate an inverse affine transform
+  c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT
+
+  # And we need to generate the inverse of the template warp
+  greedy -d 3 \
+    -invexp 4 \
+    -iw $SUBJ_T1TEMP_WARP $SUBJ_T1TEMP_INVWARP
+
+  cp -av $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz $ADIR/
+  cp -av $TEMPLATE_DIR/atlas_${id}_to_template_affine.mat $ADIR/
+
+  # Reslice the atlas to the template
+  ashs_reslice_to_template $ADIR $ASHS_WORK/final
+
+  # If heuristics specified, create exclusion maps for the labels
+  if [[ $ASHS_HEURISTICS ]]; then
+
+    for side in left right; do
+
+      mkdir -p $ADIR/heurex
+      subfield_slice_rules \
+        $ADIR/tse_native_chunk_${side}_seg.nii.gz \
+        $ASHS_HEURISTICS \
+        $ADIR/heurex/heurex_${side}_%04d.nii.gz
+
+    done
+
+  fi
+}
+
 # Resample all atlas images to the template
 function ashs_atlas_resample_tse_to_template()
 {
+  # Run this over id and side
+  qsubmit_single_array "template_reslice_tse" "${ATLAS_ID[*]}" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_atlas_resample_tse_subj 
+
   # Now resample each atlas to the template ROI chunk, setting up for n-squared 
   # registration.
   for ((i=0;i<$N;i++)); do
@@ -950,26 +1018,88 @@ function ashs_atlas_resample_tse_to_template()
   qwait "ashs_atlas_resample_*"
 }
 
+# Pairwise registration function for atlas construction
+function ashs_atlas_pairwise()
+{
+  id=${1?}
+  tid=${2?}
+  
+  if [[ $id == $tid ]]; then 
+    echo "Same atlas and target, nothing to do"
+    return
+  fi
+
+  for side in $SIDES; do
+
+    # Create directory for this registration
+    local ADIR=$ASHS_WORK/atlas/$id
+    local WREG=$ADIR/pairwise/tseg_${side}_train${tid}
+    mkdir -p $WREG
+
+    # Run ANTS with current image as fixed, training image as moving
+    ashs_ants_pairwise $ADIR $side $tid $WREG 1
+
+  done
+}
+
 # This is a high-level routine called from the atlas code to run the pairwise registration
 function ashs_atlas_register_to_rest()
 {
-  # Launch all the individual registrations
-  for id in ${ATLAS_ID[*]}; do
-    for side in left right; do
-      for tid in ${ATLAS_ID[*]}; do
+  # Launch all the individual registrations as separate jobs
+  qsubmit_double_array "ashs_atlas_nsq" "${ATLAS_ID[*]}" "${ATLAS_ID[*]}" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_atlas_pairwise
+}
 
-        if [[ $id != $tid ]]; then
+# Move atlas-specific information into the final folder
+function ashs_atlas_organize_one()
+{
+  local i=${1?}
 
-          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_nsq_${id}_${tid}" \
-            $ASHS_ROOT/bin/ashs_atlas_pairwise_qsub.sh $id $tid $side
+  # The final directory
+  local FINAL=$ASHS_WORK/final
 
-        fi
-      done
-    done
+  # Use codes for atlas names, to make this publishable online
+  local ATLAS_ID=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $1}') );
+  CODE=$(printf train%03d $i)
+  id=${ATLAS_ID[i]}
+
+  # The output directory for this atlas
+  ODIR=$FINAL/train/$CODE
+  IDIR=$ASHS_WORK/atlas/$id
+  mkdir -p $ODIR
+
+  # Copy the full ASHS_TSE (fix this later!)
+  cp -av $IDIR/tse.nii.gz $ODIR/
+
+  # Copy the stuff we need into the atlas directory
+  for side in $SIDES; do
+
+    # Copy the images 
+    cp -av \
+      $IDIR/tse_native_chunk_${side}.nii.gz \
+      $IDIR/tse_native_chunk_${side}_seg.nii.gz \
+      $IDIR/tse_to_chunktemp_${side}.nii.gz \
+      $IDIR/tse_to_chunktemp_${side}_regmask.nii.gz \
+      $IDIR/mprage_to_chunktemp_${side}.nii.gz \
+      $IDIR/seg_${side}.nii.gz \
+      $ODIR/
+
+    # Copy the transformation to the template space. We only care about
+    # the part of this transformation that involves the template, to we
+    # can save a little space here. 
+    c3d $IDIR/mprage_to_chunktemp_${side}.nii.gz -popas REF \
+      -mcs $IDIR/ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz \
+      -foreach -insert REF 1 -reslice-identity -info -endfor \
+      -omc $ODIR/greedy_t1_to_template_${side}_warp.nii.gz
+
   done
 
-  # Wait for the jobs to be done
-  qwait "ashs_nsq_*"
+  # Copy the affine transforms
+  cp -av \
+    $IDIR/ants_t1_to_temp/t1_to_template_affine.mat \
+    $IDIR/flirt_t2_to_t1/flirt_t2_to_t1.mat \
+    $ODIR/
 }
 
 
@@ -977,7 +1107,7 @@ function ashs_atlas_register_to_rest()
 function ashs_atlas_organize_final()
 {
   # The final directory
-  FINAL=$ASHS_WORK/final
+  local FINAL=$ASHS_WORK/final
 
   # Generate a file that makes this an ASHS atlas
   cat > $FINAL/ashs_atlas_vars.sh <<-CONTENT
@@ -993,50 +1123,9 @@ function ashs_atlas_organize_final()
   fi
 
   # Generate directories for each of the training images
-  for ((i=0;i<$N;i++)); do
-
-    # Use codes for atlas names, to make this publishable online
-    CODE=$(printf train%03d $i)
-    id=${ATLAS_ID[i]}
-
-		# The output directory for this atlas
-    ODIR=$FINAL/train/$CODE
-    IDIR=$ASHS_WORK/atlas/$id
-    mkdir -p $ODIR
-
-		# Copy the full ASHS_TSE (fix this later!)
-		cp -av $IDIR/tse.nii.gz $ODIR
-
-    # Copy the stuff we need into the atlas directory
-    for side in left right; do
-
-      # Copy the images 
-      cp -av \
-        $IDIR/tse_native_chunk_${side}.nii.gz \
-        $IDIR/tse_native_chunk_${side}_seg.nii.gz \
-        $IDIR/tse_to_chunktemp_${side}.nii.gz \
-        $IDIR/tse_to_chunktemp_${side}_regmask.nii.gz \
-        $IDIR/mprage_to_chunktemp_${side}.nii.gz \
-				$IDIR/seg_${side}.nii.gz \
-        $ODIR/
-
-      # Copy the transformation to the template space. We only care about
-      # the part of this transformation that involves the template, to we
-      # can save a little space here. 
-      c3d $IDIR/mprage_to_chunktemp_${side}.nii.gz -popas REF \
-        -mcs $IDIR/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz \
-        -foreach -insert REF 1 -reslice-identity -info -endfor \
-        -omc $ODIR/ants_t1_to_chunktemp_${side}Warp.nii.gz 
-
-    done
-
-    # Copy the affine transforms
-    cp -av \
-      $IDIR/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-      $IDIR/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
-      $ODIR/
-
-  done
+  qsubmit_single_array "ashs_organize_final" "$(for ((i=0;i<$N;i++)); do echo $i; done)" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_atlas_organize_one 
 
   # Copy the SNAP segmentation labels
   mkdir -p $FINAL/snap
@@ -1199,60 +1288,10 @@ function ashs_check_bl_result()
 }
 
 
-# This function runs the training for a single label in a training directory
-function ashs_bl_train_qsub()
-{
-  local POSTLIST label id mode xvid side GRAYLIST
-  xvid=${1?}
-  side=${2?}
-  label=${3?}
-
-  # Generate the posterior list for this label
-  POSTLIST=$(printf posteriorlist_%03d.txt $label)
-  rm -rf $POSTLIST
-  for id in $(cat trainids.txt); do
-    echo $(printf loo_posterior_${id}_${side}_%03d.nii.gz $label) >> $POSTLIST
-  done
-
-  # We will generate two sets of training data: one with the grayscale information and
-  # another that only uses the posterior maps, and no grayscale information
-  for mode in usegray nogray; do
-
-    # The extra parameter to bl
-    if [[ $mode = "usegray" ]]; then GRAYLIST="-g graylist.txt"; else GRAYLIST=""; fi
-
-    # Check if the training results already exist
-    if [[ $ASHS_SKIP && $(ashs_check_bl_result adaboost_${mode}-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
-
-      echo "Skipping training for ${xvid}_${side} label $label adaboost_${mode}"
-
-    else
-
-      # Sampling factor used for dry runs
-      local DRYFRAC=0.01
-
-      # Execute a dry run, where we only check the number of samples at the maximum sampling rate
-      NSAM=$(bl truthlist.txt autolist.txt $label \
-        $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $DRYFRAC 0 adaboost_dryrun \
-        $GRAYLIST -p $POSTLIST \
-          | grep 'of training data' | tail -n 1 | awk -F '[: ]' '{print $13}')
-
-      # Compute the fraction needed to obtain the desired number of samples per image
-      local FRAC=$(echo 0 | awk "{ k=$NSAM / ($ASHS_EC_TARGET_SAMPLES * $DRYFRAC); p=(k==int(k) ? k : 1 + int(k)); print p < 1 ? 1 : 1 / p }")
-
-      # Now run for real
-      /usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
-        bl truthlist.txt autolist.txt $label \
-          $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_${mode} \
-            $GRAYLIST -p $POSTLIST
-
-    fi
-
-  done
-}
-
-# Top level code for AdaBoost training and cross-validation
-function ashs_atlas_adaboost_train()
+# Get the total number of cross-validaiton experiments, INCLUDING the main
+# cross-validation experiment for Corrective Learning. This will return 1
+# plus the number of rows in the user xval file
+function ashs_xval_num()
 {
   # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
   # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
@@ -1261,91 +1300,247 @@ function ashs_atlas_adaboost_train()
     NXVAL=$(cat $ASHS_XVAL | wc -l)
   fi
 
-  # Arrays for the main training
-  XV_TRAIN[0]=${ATLAS_ID[*]}
-  XV_TEST[0]=""
-  XVID[0]="main"
+  echo $NXVAL
+}
 
-  # Arrays for the cross-validation training
-  for ((jx=1;jx<=$NXVAL;jx++)); do
+# This function sets the variables XV_TRAIN, XV_TEST and XVID for the k-th
+# cross-validation experiment. By default, the 0-th cross-validation experiment
+# is not cross-validation but the "main" corrective learning training experiment
+function ashs_xval_vars()
+{
+  local INDEX=${1?}
+  local ATLAS_ID=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $1}') );
+  local N=${ATLAS_ID[*]}
 
-    XV_TEST[$jx]=$(cat $ASHS_XVAL | awk "NR==$jx { print \$0 }")
-    XV_TRAIN[$jx]=$(echo $( for((i=0;i<$N;i++)); do echo ${ATLAS_ID[i]}; done | awk "\"{${XV_TEST[$jx]}}\" !~ \$1 {print \$1}"))
-    XVID[$jx]=xval$(printf %04d $jx)
+  if [[ $INDEX -eq 0 ]]; then
 
-  done
+    XV_TRAIN=${ATLAS_ID[*]}
+    XV_TEST=""
+    XVID="main"
 
-  # Perform initial multi-atlas segmentation
-  for ((i=0; i<=$NXVAL; i++)); do
-    for side in left right; do
+  else
 
-      WTRAIN=$ASHS_WORK/train/${XVID[i]}_${side}
-      mkdir -p $WTRAIN
+    XV_TEST=$(cat $ASHS_XVAL | awk -v k=$INDEX 'NR==$k { print $0 }')
+    XV_TRAIN=$(echo $( for((i=0;i<$N;i++)); do \
+      echo ${ATLAS_ID[i]}; done | awk "\"{$XV_TEST}\" !~ \$1 {print \$1}"))
+    XVID=xval$(printf %04d $INDEX)
 
-      # Perform the segmentation in a leave-one-out fashion among the training images
-      for id in ${XV_TRAIN[i]}; do
+  fi
+}
 
-        # The atlas set for the cross-validation
-        TRAIN=$(echo ${XV_TRAIN[i]} | sed -e "s/\<$id\>//g")
+# Function run for each xval leave-one-out experiment
+function ashs_xval_loo()
+{
+  local XVCODE=${1?}
+  local side=${2?}
+  local XVIND=$(echo $XVCODE | sed -e "s/,.*//g")
+  local LOOID=$(echo $XVCODE | sed -e "s/.*,//")
 
-        # The output path for the segmentation result
-        FNOUT=$WTRAIN/loo_seg_${id}_${side}.nii.gz
+  # Read XV_TRAIN, XV_TEST, XVID for experiment $i
+  ashs_xval_vars $XVIND
 
-        # The output path for the posteriors
-        POSTERIOR=$WTRAIN/loo_posterior_${id}_${side}_%03d.nii.gz
+  # Create the training dir
+  local WTRAIN=$ASHS_WORK/train/${XVID}_${side}
+  mkdir -p $WTRAIN
 
-        # Perform the multi-atlas segmentation if the outputs exist
-        if [[ $ASHS_SKIP && -f $FNOUT ]]; then
-          echo "Skipping label fusion for ${XVID[i]}_${side}_loo_${id}"
-        else
-          qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_lf_${XVID[i]}_${side}_loo_${id}" \
-             $ASHS_ROOT/bin/ashs_atlas_lf_qsub.sh $id "$TRAIN" $FNOUT $side $POSTERIOR
-        fi
-      done
+  # Get the list of the training subjects
+  local TRAIN=$(echo $XV_TRAIN | sed -e "s/\<$LOOID\>//g")
+
+  # The output path for the segmentation result
+  local FNOUT=$WTRAIN/loo_seg_${LOOID}_${side}.nii.gz
+
+  # The output path for the posteriors
+  local POSTERIOR=$WTRAIN/loo_posterior_${LOOID}_${side}_%03d.nii.gz
+
+  # Left out atlas directory
+  local LOODIR=$ASHS_WORK/atlas/$LOOID
+
+  # Perform the multi-atlas segmentation if the outputs exist
+  if [[ $ASHS_SKIP && -f $FNOUT ]]; then
+    echo "Skipping label fusion for ${XVID}_${side}_loo_${LOOID}"
+  else
+
+    # Perform label fusion using the atlases. We check for the existence of the atlases
+    # so if one or two of the registrations failed, the whole process does not crash
+    local ATLASES=""
+    local ATLSEGS=""
+    for id in $TRAIN; do
+      local ACAND=$LOODIR/pairwise/tseg_${side}_train${id}/atlas_to_native.nii.gz
+      local SCAND=$LOODIR/pairwise/tseg_${side}_train${id}/atlas_to_native_segvote.nii.gz
+      if [[ -f $ACAND && -f $SCAND ]]; then
+        ATLASES="$ATLASES $ACAND"
+        ATLSEGS="$ATLSEGS $SCAND"
+      fi
     done
-  done
 
-  # Wait for all the segmentations to finish  
-  qwait "ashs_lf_*_loo_*"
+    # If there are heuristics, make sure they are supplied to the LF program
+    if [[ $ASHS_HEURISTICS ]]; then
+      EXCLCMD=$(for fn in $(ls $LOODIR/heurex/heurex_${side}_*.nii.gz); do \
+        echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
+        done)
+    fi
 
+    # Run the label fusion program
+    /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
+      label_fusion 3 -g $ATLASES -l $ATLSEGS \
+        -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+        $EXCLCMD \
+        -p ${POSTERIOR} \
+        $LOODIR/tse_native_chunk_${side}.nii.gz $FNOUT
+  fi
+}
+
+function ashs_xval_prepare_bl_exp()
+{
+  local XVIND=${1?}
+  local side=${2?}
+
+  # Read XV_TRAIN, XV_TEST, XVID for experiment $i
+  ashs_xval_vars $XVIND
+  
   # Now perform the training
+  local WTRAIN=$ASHS_WORK/train/${XVID}_${side}
+
+  # Count the unique labels in the dataset. Note that for label 0 we perform the dilation to estimate
+  # the actual number of background voxels
+  for fn in $(cat $WTRAIN/truthlist.txt); do 
+    c3d $fn -dup -lstat; 
+  done | awk '$1 ~ /[0-9]+/ && $1 > 0 { h[$1]+=$6; h[0]+=$6 } END {for (q in h) print q,h[q] }' \
+    | sort -n > $WTRAIN/counts.txt
+}
+
+function ashs_xval_bl()
+{
+  # The experiment code
+  local EXPCODE=${1?}
+  local mode=${2?}
+
+  # Decode the experiment
+  local XVIND=$(echo $EXPCODE | awk -F ',' '{print $1}')
+  local side=$(echo $EXPCODE | awk -F ',' '{print $2}')
+  local label=$(echo $EXPCODE | awk -F ',' '{print $3}')
+
+  # Read XV_TRAIN, XV_TEST, XVID for experiment $i
+  ashs_xval_vars $XVIND
+  
+  # Now perform the training
+  local WTRAIN=$ASHS_WORK/train/${XVID}_${side}
+
+  # Create a directory for the list files
+  local LDIR=$WTRAIN/bl_lists/${mode}_${label}
+  mkdir -p $LDIR
+
+  # Get the list of ids that go into this training experiments
+  rm -rf $LDIR/*
+  for id in $XV_TRAIN; do
+    local POSTFILE=$(printf $WTRAIN/loo_posterior_${id}_${side}_%03d.nii.gz $label)
+    local SEGFILE=$WTRAIN/loo_seg_${id}_${side}.nii.gz 
+    if [[ -f $POSTFILE && -f $SEGFILE ]]; then
+      echo $POSTFILE >> $LDIR/postlist.txt
+      echo $SEGFILE >> $LDIR/autolist.txt
+      echo $ASHS_WORK/atlas/$id/tse_native_chunk_${side}.nii.gz >> $LDIR/graylist.txt
+      echo $ASHS_WORK/atlas/$id/tse_native_chunk_${side}_seg.nii.gz >> $LDIR/truthlist.txt
+    fi
+  done
+
+  # The extra parameter to bl
+  local GRAYLIST=""
+  if [[ $mode = "usegray" ]]; then 
+    GRAYLIST="-g $LDIR/graylist.txt"
+  fi
+
+  # Check if the training results already exist
+  if [[ $ASHS_SKIP && $(ashs_check_bl_result $WTRAIN/adaboost_${mode}-AdaBoostResults-Tlabel${label}) -eq 1 ]]; then
+
+    echo "Skipping training for ${XVID}_${side} label $label adaboost_${mode}"
+
+  else
+
+    # Sampling factor used for dry runs
+    local DRYFRAC=0.01
+
+    # Execute a dry run, where we only check the number of samples at the maximum sampling rate
+    NSAM=$(bl $LDIR/truthlist.txt $LDIR/autolist.txt $label \
+      $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $DRYFRAC 0 $WTRAIN/adaboost_dryrun \
+      $GRAYLIST -p $LDIR/postlist.txt \
+        | grep 'of training data' | tail -n 1 | awk -F '[: ]' '{print $13}')
+
+    # NSAM must be a number greater than 0
+    if [[ ! $NSAM -gt 0 ]]; then
+      NSAM=1
+    fi
+
+    # Compute the fraction needed to obtain the desired number of samples per image
+    local FRAC=$(echo 0 | awk "{ k=$NSAM / ($ASHS_EC_TARGET_SAMPLES * $DRYFRAC); p=(k==int(k) ? k : 1 + int(k)); print p < 1 ? 1 : 1 / p }")
+
+    # Now run for real
+    /usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
+      bl $LDIR/truthlist.txt $LDIR/autolist.txt $label \
+        $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS $WTRAIN/adaboost_${mode} \
+          $GRAYLIST -p $LDIR/postlist.txt
+
+  fi
+}
+
+# Top level code for AdaBoost training and cross-validation
+function ashs_atlas_adaboost_train()
+{
+  # Number of experiments to do
+  local NXVAL=$(ashs_xval_num)
+
+  # Generate the leave-one-out experiment codes - a long list
+  local LOOEXP BLEXP BLPREPEXP
+  local iExp=0
   for ((i=0; i<=$NXVAL; i++)); do
-    for side in left right; do
 
-      WTRAIN=$ASHS_WORK/train/${XVID[i]}_${side}
-      pushd $WTRAIN
+    # Update the list of training experiments to do
+    BLPREPEXP[$i]=$i
 
-      # Create text files for input to bl
-      rm -rf graylist.txt autolist.txt truthlist.txt trainids.txt
-      for id in ${XV_TRAIN[i]}; do
-        echo $ASHS_WORK/atlas/$id/tse_native_chunk_${side}.nii.gz >> graylist.txt
-        echo $ASHS_WORK/atlas/$id/tse_native_chunk_${side}_seg.nii.gz >> truthlist.txt
-        echo loo_seg_${id}_${side}.nii.gz >> autolist.txt
-        echo $id >> trainids.txt
+    # Read XV_TRAIN, XV_TEST, XVID for experiment $i
+    ashs_xval_vars $i
+
+    # Get the list of all leave-one-out experiments to do
+    for xid in $XV_TRAIN; do
+      LOOEXP[$iExp]="$i,$xid"
+      iExp=$((iExp+1))
+    done
+
+  done
+
+  # Qsub all of these experiments
+  qsubmit_double_array "ashs_lf_loo" "${LOOEXP[*]}" "$SIDES" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_xval_loo
+
+  # This qsub will simply generate the various lists used by bl, and the voxel counts
+  qsubmit_double_array "ashs_bl_prep" "${BLPREPEXP[*]}" "$SIDES" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_xval_prepare_bl_exp
+
+  # Generate the list of bl experiments to run based on voxel counts
+  iExp=0
+  for ((i=0; i<=$NXVAL; i++)); do
+
+    # Read XV_TRAIN, XV_TEST, XVID for experiment $i
+    ashs_xval_vars $i
+
+    for side in $SIDES; do
+
+      # Note - we require minimum of 100 samples to do AdaBoost
+      for label in $(cat $ASHS_WORK/train/${XVID}_${side}/counts.txt | \
+        awk -v m=$ASHS_EC_MINIMUM_SAMPLES '$2 >= m {print $1}') 
+      do
+        BLEXP[$iExp]="${i},${side},${label}"
+        iExp=$((iExp+1))
       done
-
-      # Count the unique labels in the dataset. Note that for label 0 we perform the dilation to estimate
-      # the actual number of background voxels
-      for fn in $(cat truthlist.txt); do 
-        c3d $fn -dup -lstat; 
-      done | awk '$1 ~ /[0-9]+/ && $1 > 0 { h[$1]+=$6; h[0]+=$6 } END {for (q in h) print q,h[q] }' | sort -n > counts.txt
-
-      # For each label, launch the training job. The number of samples is scaled to have roughly 1000 per label
-      for label in $(cat counts.txt | awk '{print $1}'); do
-
-        qsub $QOPTS $ASHS_EC_QSUB_EXTRA_OPTIONS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_bl_${XVID[i]}_${side}_${label}" \
-           $ASHS_ROOT/bin/ashs_atlas_bl_qsub.sh ${XVID[i]} $side $label
-
-      done
-
-      popd
 
     done
   done
 
-  # Wait for the training to finish  
-  qwait "ashs_bl_*"
-
+  # Submit all the actual bias learning experiments
+  qsubmit_double_array "ashs_bl" "${BLEXP[*]}" "usegray nogray" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_xval_bl
 }
 
 # This function checks whether all ASHS outputs have been created for a given stage
@@ -1371,9 +1566,13 @@ function ashs_check_train()
     fi
 
     if [[ $STAGE -ge 1 ]]; then
-      for kind in Warp InverseWarp; do
-        if [[ ! -f template_build/atlas${id}_mprage${kind}.nii.gz ]]; then
-          echo "STAGE $STAGE: missing file template_build/atlas${id}_mprage${kind}.nii.gz"
+
+      for checkfile in \
+        template_build/atlas_${id}_to_template_warp.nii.gz \
+        template_build/atlas_${id}_to_template_affine.mat; 
+      do 
+        if [[ ! -f $checkfile ]]; then
+          echo "STAGE $STAGE: missing file $checkfile"
           let NERR=NERR+1
         fi
       done
@@ -1460,7 +1659,9 @@ function ashs_check_train()
           let NERR=NERR+1
         fi
 
-        for label in $(cat $WTRAIN/counts.txt | awk '{print $1}'); do
+        for label in $(cat $WTRAIN/counts.txt \
+          | awk -v m=$ASHS_EC_MINIMUM_SAMPLES '$2 >= m {print $1}') 
+        do
           for kind in usegray nogray; do
             if [[ ! -f $WTRAIN/adaboost_${kind}-AdaBoostResults-Tlabel${label} ]]; then
               echo "STAGE $STAGE: missing file $WTRAIN/adaboost_${kind}-AdaBoostResults-Tlabel${label}"

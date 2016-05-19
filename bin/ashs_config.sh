@@ -174,6 +174,9 @@ ASHS_EC_ITERATIONS=500
 # Size of the neighborhood used to derive features for AdaBoost.
 ASHS_EC_PATCH_RADIUS=6x6x0
 
+# Minimum number of samples to do bias correction
+ASHS_EC_MINIMUM_SAMPLES=100
+
 # Additional QSUB options for error correction training stage. Error correction
 # is memory intensive, and some systems have limits on the memory allowed to a
 # single qsub job. These qsub options can be used to run jobs in a parallel environment
