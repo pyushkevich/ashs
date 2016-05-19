@@ -302,8 +302,8 @@ function ashs_atlas_vars()
   else
 
     TDIR=$ASHS_ATLAS/train/train${tid} 
-    ATLAS_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1_ITK.txt
-    ATLAS_AFF_T1TEMP_MAT=$TDIR/ants_t1_to_tempAffine.txt
+    ATLAS_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1.mat
+    ATLAS_AFF_T1TEMP_MAT=$TDIR/t1_to_template_affine.mat
 
   fi
 
@@ -331,8 +331,7 @@ function ashs_atlas_side_vars()
   # To save space, the atlas only stores chunk-wise warps to template
   if [[ $ATLAS_MODE -eq 0 ]]; then
     TDIR=$ASHS_ATLAS/train/train${tid} 
-    ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_chunktemp_${side}Warp.nii.gz
-    ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_chunktemp_${side}InverseWarp.nii.gz
+    ATLAS_T1TEMP_WARP=$TDIR/greedy_t1_to_template_${side}_warp.nii.gz
   else
     TDIR=$ASHS_WORK/atlas/${tid}
     ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz
@@ -1097,7 +1096,7 @@ function ashs_atlas_organize_one()
 
   # Copy the affine transforms
   cp -av \
-    $IDIR/ants_t1_to_temp/t1_to_template_affine.mat \
+    $IDIR/affine_t1_to_template/t1_to_template_affine.mat \
     $IDIR/flirt_t2_to_t1/flirt_t2_to_t1.mat \
     $ODIR/
 }
