@@ -458,12 +458,12 @@ function ashs_ants_pairwise()
     # Perform greedy affine registration with mask and NCC metric
     time greedy -d 3 -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
-      -m NCC 2x2x2 -n 60x60x0 -float 
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n 60x60x0 -float 
 
     # Perform greedy deformable registration with NCC metric
     time greedy -d 3 -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
-      -m NCC 2x2x2 -n 60x60x20 -e 0.5 -float
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n 60x60x20 -e 0.5 -float
 
     # TODO: restore the config stuff
     ### -n $ASHS_PAIRWISE_ANTS_ITER -e $ASHS_PAIRWISE_ANTS_STEPSIZE
@@ -1402,8 +1402,8 @@ function ashs_xval_prepare_bl_exp()
 
   # Count the unique labels in the dataset. Note that for label 0 we perform the dilation to estimate
   # the actual number of background voxels
-  for fn in $(cat $WTRAIN/truthlist.txt); do 
-    c3d $fn -dup -lstat; 
+  for id in $XV_TRAIN; do
+    c3d $ASHS_WORK/atlas/$id/tse_native_chunk_${side}_seg.nii.gz -dup -lstat; 
   done | awk '$1 ~ /[0-9]+/ && $1 > 0 { h[$1]+=$6; h[0]+=$6 } END {for (q in h) print q,h[q] }' \
     | sort -n > $WTRAIN/counts.txt
 }

@@ -124,6 +124,9 @@ ASHS_HISTMATCH_CONTROLS=5
 # The number of ANTS iterations for running pairwise registration
 ASHS_PAIRWISE_ANTS_ITER="60x60x20"
 
+# The radius of the cross-correlation patch for pairwise registration
+ASHS_PAIRWISE_CROSSCORR_RADIUS="2x2x2"
+
 # The step size for ANTS
 ASHS_PAIRWISE_ANTS_STEPSIZE="0.25"
 
