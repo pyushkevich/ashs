@@ -77,7 +77,7 @@ ashs_reslice_to_template . $ASHS_WORK/final
 # If heuristics specified, create exclusion maps for the labels
 if [[ $ASHS_HEURISTICS ]]; then
 
-  for side in left right; do
+  for side in $SIDES; do
 
     mkdir -p heurex
     subfield_slice_rules tse_native_chunk_${side}_seg.nii.gz $ASHS_HEURISTICS heurex/heurex_${side}_%04d.nii.gz

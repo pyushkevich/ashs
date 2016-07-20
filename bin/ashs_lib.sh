@@ -517,7 +517,7 @@ function ashs_reslice_to_template()
 
   # Apply the transformation to the masks
   local side
-  for side in left right; do
+  for side in $SIDES; do
 
     ashs_subj_side_vars $ASHS_WORK $side
 
@@ -797,6 +797,7 @@ function ashs_template_single_reg()
   local TEMPLATE=$TEMPLATE_DIR/atlastemplate.nii.gz
   local MPRAGE=$ASHS_WORK/atlas/$ID/mprage.nii.gz
 
+  local INIT=$TEMPLATE_DIR/atlas_${ID}_to_template_initrigid.mat
   local RIGM=$TEMPLATE_DIR/atlas_${ID}_to_template_rigid.mat
   local AFFM=$TEMPLATE_DIR/atlas_${ID}_to_template_affine.mat
   local WARP=$TEMPLATE_DIR/atlas_${ID}_to_template_warp.nii.gz
@@ -808,7 +809,7 @@ function ashs_template_single_reg()
     # Perform affine registration to template
     time greedy -d 3 \
       -a -i $TEMPLATE $MPRAGE -o $RIGM \
-      -ia-identity -m NCC 2x2x2 \
+      -ia $INIT -m NCC 2x2x2 \
       -n 60x20x0 -dof 6
 
     # Reslice to template
@@ -820,7 +821,7 @@ function ashs_template_single_reg()
     # Perform affine registration to template
     time greedy -d 3 \
       -a -i $TEMPLATE $MPRAGE -o $AFFM \
-      -ia-identity -m NCC 2x2x2 \
+      -ia $INIT -m NCC 2x2x2 \
       -n 60x20x0
     
     # Perform deformable registration to template
@@ -876,6 +877,41 @@ function ashs_template_side_roi()
   cp -a $TEMPLATE_DIR/refspace*${side}.nii.gz $ASHS_WORK/final/template/
 }
 
+function ashs_template_pairwise_rigid()
+{
+  # This is the atlas we will be registering to
+  local FIX_ID=${1?}
+  local WDIR=$ASHS_WORK/template_build/prereg
+  local WORSTCOST=$WDIR/worstncc_${FIX_ID}.txt
+
+  # Here are all the atlas IDs
+  local MOV_ID
+  for MOV_ID in $(ls $ASHS_WORK/atlas); do
+
+    if [[ $MOV_ID != $FIX_ID ]]; then
+
+      # Pair of the fixed and moving images
+      local FIX_IMG=$ASHS_WORK/atlas/$FIX_ID/mprage_lr.nii.gz
+      local MOV_IMG=$ASHS_WORK/atlas/$MOV_ID/mprage_lr.nii.gz
+      local RMAT=$WDIR/rigid_${FIX_ID}_${MOV_ID}.mat
+      local COST=$WDIR/ncc_${FIX_ID}_${MOV_ID}.txt
+
+      # Perform greedy registration
+      greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
+        -i $FIX_IMG $MOV_IMG \
+        -o $RMAT -ia-id -n 40 | tee $TMPDIR/reg.txt
+
+      # Get the final cost
+      cat $TMPDIR/reg.txt | grep -B 3 'Final RAS' | \
+        grep -v "[A-Z]" | tail -n 1 | awk '{print $3}' > $COST
+
+    fi
+
+  done
+
+  # Compute the worst cost (largest number)
+  cat $WDIR/ncc_${FIX_ID}_*.txt | sort -n | tail -n 1 > $WORSTCOST
+}
 
 # Build the template using SYN
 function ashs_atlas_build_template()
@@ -893,9 +929,36 @@ function ashs_atlas_build_template()
     echo "Skipping template building"
   else
 
-    # Make the first image be the initial template 
-    # TODO: in the future allow user to supply template image
-    cp -av ${TEMPLATE_SRC[0]} $TEMPLATE_DIR/atlastemplate.nii.gz
+    # Create the preregistration directory
+    local PREREG=$TEMPLATE_DIR/prereg
+    mkdir -p $PREREG
+
+    # Perform quick rigid registration between all pairs of images. Since these
+    # registration are really fast, we don't want too much qsub overhead, so all
+    # registrations for a given target image are run at once
+    qsubmit_single_array "template_reg_${iter}" "${ATLAS_ID[*]}" \
+      $ASHS_ROOT/bin/ashs_function_qsub.sh \
+      ashs_template_pairwise_rigid 
+
+    # Figure out which atlas has the best worst NCC - this is the atlas we want to register everyone to
+    for id in ${ATLAS_ID[*]}; do
+      echo $(cat $PREREG/worstncc_${id}.txt) $id
+    done | sort -n | head -n 1 > $PREREG/best_worstncc.txt
+
+    # This is the subject we will register everyone to
+    local TSUBJ=$(cat $PREREG/best_worstncc.txt | awk '{print $2}')
+
+    # Make TSUBJ first image be the initial template 
+    cp -av $ASHS_WORK/atlas/$TSUBJ/mprage.nii.gz $TEMPLATE_DIR/atlastemplate.nii.gz
+
+    # Use the initial rigids to TSUBJ for initialization
+    for id in ${ATLAS_ID[*]}; do
+      if [[ $id == $TSUBJ ]]; then
+        c3d_affine_tool -scale 1 1 1 -o $TEMPLATE_DIR/atlas_${id}_to_template_initrigid.mat
+      else
+        cp -av $PREREG/rigid_${TSUBJ}_${id}.mat $TEMPLATE_DIR/atlas_${id}_to_template_initrigid.mat
+      fi
+    done
 
     # Perform the iterations of template building
     for ((iter=0; iter < $ASHS_TEMPLATE_STAGES_TOTAL; iter++)); do
@@ -984,7 +1047,7 @@ function ashs_atlas_resample_tse_subj()
   # If heuristics specified, create exclusion maps for the labels
   if [[ $ASHS_HEURISTICS ]]; then
 
-    for side in left right; do
+    for side in $SIDES; do
 
       mkdir -p $ADIR/heurex
       subfield_slice_rules \
@@ -1142,7 +1205,7 @@ function ashs_atlas_organize_final()
   cp -av $ASHS_ROOT/bin/ashs_config.sh $FINAL/ashs_system_config.sh
 
   # Copy the adaboost training files
-  for side in left right; do
+  for side in $SIDES; do
     mkdir -p $FINAL/adaboost/${side}
     cp -av $ASHS_WORK/train/main_${side}/adaboost* $FINAL/adaboost/${side}/
   done
@@ -1212,7 +1275,7 @@ function ashs_atlas_organize_xval()
 
     # For the adaboost directory, link the corresponding cross-validation experiment
     mkdir -p $XVATLAS/adaboost
-    for side in left right; do
+    for side in $SIDES; do
       ln -sf $ASHS_WORK/train/${XID}_${side} $XVATLAS/adaboost/$side
     done
 
@@ -1242,7 +1305,7 @@ function ashs_atlas_organize_xval()
       # We can also reuse the atlas-to-target stuff
       myidx=0
       for tid in $TRAIN; do
-        for side in left right; do
+        for side in $SIDES; do
 
           local tdir=$XVSUBJ/multiatlas/tseg_${side}_train$(printf %03d $myidx)  
           mkdir -p $tdir
@@ -1578,7 +1641,7 @@ function ashs_check_train()
     fi
 
     if [[ $STAGE -ge 2 ]]; then
-      for side in left right; do
+      for side in $SIDES; do
         for kind in \
           tse_native_chunk_${side} mprage_to_chunktemp_${side} \
           tse_to_chunktemp_${side} tse_to_chunktemp_${side}_regmask \
@@ -1593,7 +1656,7 @@ function ashs_check_train()
     fi
 
     if [[ $STAGE -ge 3 ]]; then
-      for side in left right; do
+      for side in $SIDES; do
         missing=0
         for tid in ${ATLAS_ID[*]}; do
           if [[ $id != $tid ]]; then
@@ -1638,7 +1701,7 @@ function ashs_check_train()
   if [[ $STAGE -ge 4 ]]; then
 
     for ((i=0; i<=$NXVAL; i++)); do
-      for side in left right; do
+      for side in $SIDES; do
 
         WTRAIN=$ASHS_WORK/train/${XVID[i]}_${side}
 

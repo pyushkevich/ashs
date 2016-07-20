@@ -50,15 +50,17 @@ FILES=($(cat $ASHS_TRAIN_MANIFEST | awk -v id=$id '$1 == id { print $2,$3,$4,$5 
 # of the segmentations to equal the transforms of the input images.
 if [[ $ASHS_SKIP && \
       -f $MYWORK/mprage.nii.gz && -f $MYWORK/tse.nii.gz && \
-      -f $MYWORK/seg_left.nii.gz && -f $MYWORK/seg_right.nii.gz ]]; 
+      -f $MYWORK/seg_left.nii.gz && -f $MYWORK/seg_right.nii.gz && \
+      -f $MYWORK/mprage_lr.nii.gz ]]; 
 then
   echo "Skipping initial image copy for subject $id"
 else 
   $ASHS_BIN/c3d -type ushort \
-    ${FILES[0]} -o $MYWORK/mprage.nii.gz \
+    ${FILES[0]} -as MPR -o $MYWORK/mprage.nii.gz \
     ${FILES[1]} -o $MYWORK/tse.nii.gz -popas REF \
     -push REF ${FILES[2]} -copy-transform -o $MYWORK/seg_left.nii.gz \
-    -push REF ${FILES[3]} -copy-transform -o $MYWORK/seg_right.nii.gz
+    -push REF ${FILES[3]} -copy-transform -o $MYWORK/seg_right.nii.gz \
+    -push MPR -smooth-fast 4vox -resample 12.5% -o $MYWORK/mprage_lr.nii.gz
 fi
 
 # Peform registration between the two modalities

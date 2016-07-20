@@ -45,7 +45,7 @@ mkdir -p $WQA
 ASHS_LABELFILE=$ASHS_ATLAS/snap/snaplabels.txt
 
 # Generate the 'final' segmentations
-for side in left right; do
+for side in ${SIDES}; do
 
   for segtype in heur corr_usegray corr_nogray; do
 
@@ -57,7 +57,7 @@ for side in left right; do
 done
 
 # Names of segmentations
-for side in left right; do
+for side in ${SIDES}; do
 
 	SMASV=$WSUB/lfseg_heur_${side}.nii.gz
 	SBC=$WSUB/lfseg_corr_usegray_${side}.nii.gz

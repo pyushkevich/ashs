@@ -33,6 +33,16 @@
 # a copy of the $ASHS_ROOT/bin/ashs_config.sh, edit the copy, and pass the
 # copy to the ashs_main or ashs_train scripts using the -C flag. 
 
+# -------------------------------------
+# ASHS configuration and parameter file
+# -------------------------------------
+#
+# The hemispheres in which ASHS segmentation is performed. By default this is 
+# "left right" but can be set to "left" or "right" if you only need one side.
+# The user must still supply the left and right segmentations to the training 
+# in the manifest file
+ASHS_SIDES="left right"
+
 # ---------------------------------
 # ASHS_TSE resolution-related parameters
 # ---------------------------------

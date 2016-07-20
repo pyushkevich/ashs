@@ -150,7 +150,7 @@ fi
 
 # Set the config file
 if [[ ! $ASHS_CONFIG ]]; then
-  ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+  ASHS_CONFIG=$ATLAS/ashs_user_config.sh
 fi
 
 # Check that parallel and qsub are not both on
@@ -244,10 +244,6 @@ fi
 # Create the working directory and the dump directory
 mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
 
-# Run the stages of the script
-export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
-export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
-
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then
   STAGE_START=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $1}')
@@ -266,7 +262,12 @@ fi
 source $ASHS_ATLAS/ashs_atlas_vars.sh
 
 # List of sides for the array qsub commands below
-SIDES="left right"
+SIDES="$ASHS_SIDES"
+
+# Run the stages of the script
+export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
+export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
+export SIDES
 
 # List of training atlases 
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)

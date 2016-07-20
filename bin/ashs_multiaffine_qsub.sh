@@ -30,8 +30,8 @@ set -x -e
 source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 # Determine training case and side based on the TASK ID
-SIDES=(left right)
-side=${SIDES[$(((SGE_TASK_ID - 1) % 2))]}
+SIDEARR=(left right)
+side=${SIDEARR[$(((SGE_TASK_ID - 1) % 2))]}
 tid=$(printf %03d $(((SGE_TASK_ID - 1)/ 2)))
 
 # Verify all the necessary inputs

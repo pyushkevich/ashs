@@ -190,8 +190,8 @@ ATLAS_T2=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $3}') );
 ATLAS_LS=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $4}') );
 ATLAS_RS=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $5}') );
 
-# Sides
-SIDES="left right"
+# Sides - from config file
+SIDES="$ASHS_SIDES"
 
 # Get the number of atlases
 N=${#ATLAS_ID[*]}

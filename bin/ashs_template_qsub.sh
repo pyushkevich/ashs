@@ -78,13 +78,19 @@ if [[ -f $SUBJ_AFF_T1TEMP_MAT && $ASHS_SKIP_RIGID ]]; then
 
 else
 
-	# Try using FLIRT
-  export FSLOUTPUTTYPE=NIFTI_GZ
 
+  # Start with a very fast rigid transform - hope is it won't hurt things and
+  # will actually prevent affine from doing insane scaling
+  time greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
+    -i $TEMP_T1_FULL $SUBJ_MPRAGE \
+    -o $WAFF/greedy_t1_to_template_init_rigid.mat -ia-id -n 400x0x0x0 \
+    -search 400 0 5
+    
   # Use greedy
   time greedy -d 3 -a -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
-    -o $WAFF/greedy_t1_to_template.mat -ia-id -n 400x80x40x0
+    -o $WAFF/greedy_t1_to_template.mat -n 400x80x40x0 \
+    -ia $WAFF/greedy_t1_to_template_init_rigid.mat
 
   greedy -d 3 -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
     -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
