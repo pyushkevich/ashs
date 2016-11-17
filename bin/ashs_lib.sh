@@ -1263,7 +1263,7 @@ function ashs_atlas_organize_xval()
     for tid in $TRAIN; do
 
       # Get the index of the training ID among all training subjects
-      local srcdir=$(for qid in ${ATLAS_ID[*]}; do echo $qid; done | awk "\$1~/$tid/ {printf \"train%03d\n\",NR-1}")
+      local srcdir=$(for qid in ${ATLAS_ID[*]}; do echo $qid; done | awk "\$1==\"$tid\" {printf \"train%03d\n\",NR-1}")
       local trgdir=$(printf "train%03d" $myidx)
 
       # Link the two directories
@@ -1372,7 +1372,7 @@ function ashs_xval_vars()
 {
   local INDEX=${1?}
   local ATLAS_ID=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $1}') );
-  local N=${ATLAS_ID[*]}
+  local N=${#ATLAS_ID[*]}
 
   if [[ $INDEX -eq 0 ]]; then
 
@@ -1382,7 +1382,7 @@ function ashs_xval_vars()
 
   else
 
-    XV_TEST=$(cat $ASHS_XVAL | awk -v k=$INDEX 'NR==$k { print $0 }')
+    XV_TEST=$(cat $ASHS_XVAL | awk -v k=$INDEX 'NR==k { print $0 }')
     XV_TRAIN=$(echo $( for((i=0;i<$N;i++)); do \
       echo ${ATLAS_ID[i]}; done | awk "\"{$XV_TEST}\" !~ \$1 {print \$1}"))
     XVID=xval$(printf %04d $INDEX)
@@ -1547,6 +1547,8 @@ function ashs_xval_bl()
 # Top level code for AdaBoost training and cross-validation
 function ashs_atlas_adaboost_train()
 {
+  set -e 
+
   # Number of experiments to do
   local NXVAL=$(ashs_xval_num)
 
