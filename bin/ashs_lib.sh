@@ -625,6 +625,7 @@ BLOCK1
   /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
     label_fusion 3 -g $ATLASES -l $ATLSEGS \
       -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+      -pd $ASHS_MALF_PADDING \
       $EXCLCMD \
       -p ${POSTERIOR} \
       tse_native_chunk_${side}.nii.gz $FNOUT
@@ -663,6 +664,7 @@ BLOCK1
 	local RESULT=$TDIR/fusion/lfseg_raw_${side}.nii.gz
   label_fusion 3 -g $ATLASES -l $ATLSEGS \
     -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+    -pd $ASHS_MALF_PADDING \
     -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
     tse_native_chunk_${side}.nii.gz $RESULT
 
@@ -680,6 +682,7 @@ BLOCK1
 
 		label_fusion 3 -g $ATLASES -l $ATLSEGS \
 			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+      -pd $ASHS_MALF_PADDING \
 			$EXCLCMD \
       -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
 			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
@@ -715,6 +718,7 @@ BLOCK1
 
 		label_fusion 3 -g $ATLASES -l $ATLSEGS \
 			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+      -pd $ASHS_MALF_PADDING \
 			$EXCLCMD \
       -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz \
 			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz
@@ -860,11 +864,26 @@ function ashs_template_side_roi()
   local side=${1?}
   local TEMPLATE_DIR=$ASHS_WORK/template_build
 
+  # Average the segmentations. To avoid filling memory, we add the segmentations
+  # one by one, rather than load them all at once. This makes for somewhat ugly 
+  local CMDLINE ADD file N
+
+  N=0
+  for file in $(ls $TEMPLATE_DIR/atlas_*_to_template_reslice_seg_${side}.nii.gz); do
+    if [[ $CMDLINE ]]; then
+      ADD="-add"
+    else
+      ADD=""
+    fi
+    CMDLINE="$CMDLINE $file -thresh 0.5 inf 1 0 $ADD "
+    N=$((N+1))
+  done
+
   # Average the segmentations and create a target ROI with desired resolution
   c3d \
-    $TEMPLATE_DIR/atlas_*_to_template_reslice_seg_${side}.nii.gz \
-    -foreach -thresh 0.5 inf 1 0 -endfor \
-    -mean -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
+    $CMDLINE \
+    -scale $(echo $N | awk '{print 1.0 / $1}') \
+    -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
     -o $TEMPLATE_DIR/meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
     -trim ${ASHS_TEMPLATE_ROI_MARGIN?} \
     -resample-mm ${ASHS_TEMPLATE_TARGET_RESOLUTION?} \
@@ -1067,17 +1086,6 @@ function ashs_atlas_resample_tse_to_template()
   qsubmit_single_array "template_reslice_tse" "${ATLAS_ID[*]}" \
     $ASHS_ROOT/bin/ashs_function_qsub.sh \
     ashs_atlas_resample_tse_subj 
-
-  # Now resample each atlas to the template ROI chunk, setting up for n-squared 
-  # registration.
-  for ((i=0;i<$N;i++)); do
-    id=${ATLAS_ID[i]}
-    qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_atlas_resample_${id}" \
-      $ASHS_ROOT/bin/ashs_atlas_resample_to_template_qsub.sh $id
-  done
-
-  # Wait for jobs to complete
-  qwait "ashs_atlas_resample_*"
 }
 
 # Pairwise registration function for atlas construction
@@ -1446,6 +1454,7 @@ function ashs_xval_loo()
     /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
       label_fusion 3 -g $ATLASES -l $ATLSEGS \
         -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+        -pd $ASHS_MALF_PADDING \
         $EXCLCMD \
         -p ${POSTERIOR} \
         $LOODIR/tse_native_chunk_${side}.nii.gz $FNOUT

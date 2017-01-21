@@ -166,6 +166,11 @@ ASHS_MALF_PATCHRAD="3x3x1"
 # where we search for matching patches
 ASHS_MALF_SEARCHRAD="3x3x1"
 
+# Padding for the T2 images - this is useful to set to something like 0x0x2 for
+# situations where you expect segmentation to go all the way to the very last
+# slice of the T2 image. This adds a modest cost to the segmentation
+ASHS_MALF_PADDING="0x0x2"
+
 
 # -----------------------------------------------
 # AdaBoost Bias Correction Parameters
