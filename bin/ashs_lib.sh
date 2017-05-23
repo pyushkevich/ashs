@@ -1528,7 +1528,7 @@ function ashs_xval_bl()
   else
 
     # Sampling factor used for dry runs
-    local DRYFRAC=0.01
+    local DRYFRAC=$ASHS_EC_DRYRUN_SAMPLE_RATE
 
     # Execute a dry run, where we only check the number of samples at the maximum sampling rate
     NSAM=$(bl $LDIR/truthlist.txt $LDIR/autolist.txt $label \

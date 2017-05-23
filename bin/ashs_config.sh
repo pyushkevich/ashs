@@ -186,6 +186,12 @@ ASHS_EC_DILATION=1
 # values speed up training
 ASHS_EC_TARGET_SAMPLES=100000
 
+# The sampling ratio used during the AdaBoost training dry run to determine 
+# the total number of samples. This should only be changed if your segmentations
+# are large and you are having problems with running out of memory (bad_alloc)
+# in the adaboost training stage. In that case, lower this value
+ASHS_EC_DRYRUN_SAMPLE_RATE="0.01"
+
 # Number of iterations for AdaBoost training.
 ASHS_EC_ITERATIONS=500
 
