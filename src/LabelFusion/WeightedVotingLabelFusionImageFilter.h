@@ -1,7 +1,7 @@
 /*===================================================================
 
   Program:   ASHS (Automatic Segmentation of Hippocampal Subfields)
-  Module:    $Id$
+  Module:    $Id: WeightedVotingLabelFusionImageFilter.h 114 2016-02-25 17:11:29Z yushkevich $
   Language:  C++ program
   Copyright (c) 2012 Paul A. Yushkevich, University of Pennsylvania
   
@@ -86,9 +86,23 @@ public:
     UpdateInputs();
     }
 
+  /** Add an atlas without labels */
+  void AddAtlas(InputImageType *grey)
+    {
+    m_Atlases.push_back(grey);
+    UpdateInputs();
+    }
+
   void AddExclusionMap(InputImagePixelType label, InputImageType *excl)
     {
     m_Exclusions[label] = excl;
+    UpdateInputs();
+    }
+
+  /** Set the mask image. A mask image explicitly specifies where voting is performed */
+  void SetMaskImage(InputImageType *mask)
+    {
+    m_MaskImage = mask;
     UpdateInputs();
     }
 
@@ -117,9 +131,22 @@ public:
   itkSetMacro(RetainPosteriorMaps, bool)
   itkGetMacro(RetainPosteriorMaps, bool)
 
+  /**
+   * Whether per-atlas weight maps should be generated. This really only makes sense
+   * when the search radius is zero, because the weight corresponds to the atlas 
+   * patch that was found to be the best match to the target patch, and this information
+   * is not currently exported in any way
+   */
+  itkSetMacro(GenerateWeightMaps, bool)
+  itkGetMacro(GenerateWeightMaps, bool)
+
   typedef itk::Image<float, InputImageDimension> PosteriorImage;
   typedef typename PosteriorImage::Pointer PosteriorImagePtr;
   typedef typename std::map<InputImagePixelType, PosteriorImagePtr> PosteriorMap;
+
+  typedef itk::Image<float, InputImageDimension> WeightMapImage;
+  typedef typename WeightMapImage::Pointer WeightMapImagePtr;
+  typedef typename std::vector<WeightMapImagePtr> WeightMapArray;
                                                                     
   /**
    * Get the posterior maps (if they have been retained)
@@ -127,9 +154,18 @@ public:
   const PosteriorMap &GetPosteriorMaps()
     { return m_PosteriorMap; }
 
+  /**
+   * Get the weight image for each atlas
+   */
+  WeightMapImage* GetWeightMap(int iAtlas) const
+    { return m_WeightMapArray[iAtlas]; }
 
 
-  void GenerateData();
+
+  void BeforeThreadedGenerateData();
+  void ThreadedGenerateData(const OutputImageRegionType &outputRegionForThread, itk::ThreadIdType threadId);
+  void AfterThreadedGenerateData();
+
  
 protected:
 
@@ -138,6 +174,7 @@ protected:
     m_Alpha=0.01; 
     m_Beta=2; 
     m_RetainPosteriorMaps = false;
+    m_GenerateWeightMaps = false;
     }
   ~WeightedVotingLabelFusionImageFilter() {}
 
@@ -148,7 +185,7 @@ private:
 
   double PatchSimilarity(
     const InputImagePixelType *psearch, const InputImagePixelType *pnormtrg, 
-    size_t n, int *offsets, InputImagePixelType &psearchSum, InputImagePixelType &psearchSSQ);
+    size_t n, const int *offsets, InputImagePixelType &psearchSum, InputImagePixelType &psearchSSQ);
 
   void ComputeOffsetTable(
     const InputImageType *image, const SizeType &radius, 
@@ -156,7 +193,8 @@ private:
 
   void UpdateInputs();
 
-  void PatchStats(const InputImagePixelType *p, size_t n, int *offsets, InputImagePixelType &mean, InputImagePixelType &sd);
+  void PatchStats(const InputImagePixelType *p, size_t n, const int *offsets, 
+                  InputImagePixelType &mean, InputImagePixelType &sd);
 
   double JointErrorEstimate(const InputImagePixelType *t, const InputImagePixelType *a1, const InputImagePixelType *a2, size_t n, int *offsets);
 
@@ -173,10 +211,43 @@ private:
   // Whether they are retained
   bool m_RetainPosteriorMaps;
 
+  // Whether weight maps are computed
+  bool m_GenerateWeightMaps;
+
+  // Optional weight map array
+  WeightMapArray m_WeightMapArray;
+
+  // Array of weight map data pointers - for faster access
+  float **m_WeightMapArrayBuffer;
+
   // Organized lists of inputs
-  InputImagePointer m_Target;
+  InputImagePointer m_Target, m_MaskImage;
   InputImageList m_AtlasSegs, m_Atlases;
   ExclusionMap m_Exclusions;
+
+  // Stuff used internally
+  int *m_OffPatchTarget, **m_OffPatchAtlas, **m_OffPatchSeg, **m_OffSearchAtlas, **m_OffSearchSeg;
+  int *m_Manhattan;
+
+  // Mask - may be maskimage or may be internal
+  InputImagePointer m_Mask;
+
+  // Neighborhood sizes
+  size_t m_NPatch, m_NSearch;
+
+  // Set of labels
+  std::set<InputImagePixelType> m_LabelSet;
+
+  // Counter map
+  PosteriorImagePtr m_CounterMap;
+
+  // Thread-specific data
+  struct ThreadData
+    {
+    std::vector<int> m_SearchHisto;
+    };
+
+  std::vector<ThreadData> m_ThreadData;
 
 };
 
