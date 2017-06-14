@@ -458,20 +458,12 @@ function ashs_ants_pairwise()
     # Perform greedy affine registration with mask and NCC metric
     time greedy -d 3 -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
-      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n 60x60x0 -float 
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER -float 
 
     # Perform greedy deformable registration with NCC metric
     time greedy -d 3 -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
-      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n 60x60x20 -e 0.5 -float
-
-    # TODO: restore the config stuff
-    ### -n $ASHS_PAIRWISE_ANTS_ITER -e $ASHS_PAIRWISE_ANTS_STEPSIZE
-
-    # Old code
-    ## ANTS 3 \
-    ##  -x tse_to_chunktemp_${side}_regmask.nii.gz $ANTS_METRIC_TERM -o $WREG/antsreg.nii.gz \
-		##	-i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER -e 0.5 -float
 
   fi
 
@@ -1320,7 +1312,7 @@ function ashs_atlas_organize_xval()
 
           local sdir=$MYATL/pairwise/tseg_${side}_train${tid}
 
-          for fname in antsregAffine.txt antsregInverseWarp.nii.gz antsregWarp.nii.gz; do
+          for fname in greedy_atlas_to_subj_affine.mat greedy_atlas_to_subj_warp.nii.gz ; do
             ln -sf $sdir/$fname $tdir/$fname
           done
         done

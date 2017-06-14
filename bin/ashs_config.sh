@@ -131,8 +131,12 @@ ASHS_HISTMATCH_CONTROLS=5
 # Pairwise multi-modality registration parameters
 # -----------------------------------------------
 
-# The number of ANTS iterations for running pairwise registration
-ASHS_PAIRWISE_ANTS_ITER="60x60x20"
+# The number of Greedy iterations for running pairwise registration
+#   - These parameters are for voxel size of 0.4x0.4x2.0 and should be
+#   - changed when voxel size is larger and the ROI is similar size. For
+#   - whole hippocampus T1 MRI for example, suggest 60x60
+ASHS_PAIRWISE_AFFINE_ITER="60x60x0"
+ASHS_PAIRWISE_DEFORM_ITER="60x60x20"
 
 # The radius of the cross-correlation patch for pairwise registration
 ASHS_PAIRWISE_CROSSCORR_RADIUS="2x2x2"
