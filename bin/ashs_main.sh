@@ -59,20 +59,26 @@ function usage()
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
 		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
-      -P                Use GNU parallel to run on multiple cores on the local machine. You need to
-                        have GNU parallel installed.
+		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
+		                    have GNU parallel installed.
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
 		                    files should consist of two nifti files in quotation marks:
 
 		                      -r "ref_seg_left.nii.gz ref_seg_right.nii.gz"
-                        
+
 		                    The results will include overlap calculations between different
 		                    stages of the segmentation and the reference segmentation. Note that the
 		                    comparison takes into account the heuristic rules specified in the altas, so
 		                    it is not as simple as computing dice overlaps between the reference seg
 		                    and the ASHS segs.
+		  -H                Tell ASHS to use external hooks for reporting progress, errors, and warnings.
+		                    The environment variables ASHS_HOOK_SCRIPT must be set to point to the appropriate
+		                    script. For an example script with comments, see ashs_default_hook.sh
+		                    The purpose of the hook is to allow intermediary systems (e.g. XNAT) 
+		                    to monitor ASHS performance. An optional ASHS_HOOK_DATA variable can be set
+		                    and will be forwarded to the script
 
-		stages:
+		Stages:
 		  1:                fit to population template
 		  2:                multi-atlas registration
 		  3:                consensus segmentation using voting
@@ -113,8 +119,12 @@ unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
 unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 
+# Set the default hook script - which does almost nothing
+unset ASHS_USE_CUSTOM_HOOKS
+
+
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:NTdhVQP" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:HNTdhVQP" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;
@@ -129,6 +139,7 @@ while getopts "g:f:w:s:a:q:I:C:r:NTdhVQP" opt; do
     P) ASHS_USE_PARALLEL=1;;
     q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
+    H) ASHS_USE_CUSTOM_HOOKS=1;;
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
     d) set -x -e;;
     h) usage; exit 0;;
@@ -145,6 +156,34 @@ if [[ ! $ASHS_ROOT ]]; then
   exit -2
 elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
   echo "ASHS_ROOT must point to an absolute path, not a relative path"
+  exit -2
+fi
+
+# Handle the hook scripts
+if [[ $ASHS_USE_CUSTOM_HOOKS ]]; then
+
+  if [[ ! $ASHS_HOOK_SCRIPT ]]; then
+    echo "ASHS_HOOK_SCRIPT must be set when using -H option"; exit -2
+  fi
+
+  if [[ ! -f $ASHS_HOOK_SCRIPT ]]; then
+    echo "ASHS_HOOK_SCRIPT must point to a script file"; exit -2
+  fi
+
+  echo "Custom hooks requested with -H option"
+  echo "  Hook script (\$ASHS_HOOK_SCRIPT): $ASHS_HOOK_SCRIPT"
+  echo "  User data (\$ASHS_HOOK_DATA): $ASHS_HOOK_DATA"
+
+else
+
+  ASHS_HOOK_SCRIPT=$ASHS_ROOT/bin/ashs_default_hook.sh
+  unset ASHS_HOOK_DATA
+
+fi
+
+# Check for the existence of the hook script
+if [[ ! -x $ASHS_HOOK_SCRIPT ]]; then
+  echo "ASHS hook script does not point to an executable (ASHS_HOOK_SCRIPT=$ASHS_HOOK_SCRIPT)"
   exit -2
 fi
 
@@ -250,7 +289,7 @@ if [[ $STAGE_SPEC ]]; then
   STAGE_END=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $NF}')
 else
   STAGE_START=1
-  STAGE_END=15
+  STAGE_END=7
 fi
 
 if [[ ! $STAGE_END || ! $STAGE_START ]]; then
@@ -267,50 +306,95 @@ SIDES="$ASHS_SIDES"
 # Run the stages of the script
 export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
 export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
-export SIDES
+export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 
 # List of training atlases 
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)
 
+# Lengths of the different stages in terms of relative progress
+STAGE_PPOS=(0.0 0.2 0.5 0.6 0.9 0.95 0.98 1.0)
+
+# Names of the different stages
+STAGE_NAMES=(\
+  "Normalization to T1 population template" \
+  "Initial ROI registration to all T2 atlases" \
+  "Initial joint label fusion" \
+  "Boostrapped ROI registration to all T2 atlases" \
+  "Boostrapped joint label fusion" \
+  "Final QA" \
+  "Statistics and volume computation")
+
+# If starting at stage other than 1, check for the correct output of
+# the previous stages
+if [[ $STAGE_START -gt 1 ]]; then
+
+  # Run the validity check
+  ashs_check_main $((STAGE_START-1)) || exit -1
+
+else
+
+  # Check the validity of the atlas
+  ashs_check_atlas || exit -1
+
+fi
+
+# Run the various stages
 for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
+
+  # Figure out the progress range for the specified batch
+  ASHS_BATCH_PSTART=${STAGE_PPOS[$((STAGE-1))]}
+  ASHS_BATCH_PEND=${STAGE_PPOS[$STAGE]}
+  export ASHS_BATCH_PSTART ASHS_BATCH_PEND
+
+  # The desription of the current stage
+  STAGE_TEXT=${STAGE_NAMES[STAGE-1]}
+  echo "****************************************"
+  echo "Starting stage $STAGE: $STAGE_TEXT"
+  echo "****************************************"
+
+  # Send the informational message via hook
+  bash $ASHS_HOOK_SCRIPT info "Started stage $STAGE: $STAGE_TEXT"
 
   case $STAGE in 
 
     1) 
     # Template matching
-    echo "Running stage 1: normalize to T1 population template"
-    qsubmit_sync "ashs_stg1" $ASHS_ROOT/bin/ashs_template_qsub.sh ;;
+    qsubmit_sync "ashs_stg1" $ASHS_ROOT/bin/ashs_template_qsub.sh
+    ;;
 
     2) 
     # Multi-atlas matching 
-    echo "Running stage 2: normalize to multiple T1/T2 atlases"
-    qsubmit_double_array "ashs_stg2" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_multiatlas_qsub.sh ;;
+    qsubmit_double_array "ashs_stg2" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_multiatlas_qsub.sh
+    ;;
 
     3) 
     # Voting
-    echo "Running stage 3: Label Fusion"
-    qsubmit_single_array "ashs_stg3" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 0 ;;
+    qsubmit_single_array "ashs_stg3" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 0
+    ;;
 
     4)
     # Bootstrapping
-    echo "Running stage 4: Bootstrap segmentation"
-    qsubmit_double_array "ashs_stg4" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_bootstrap_qsub.sh ;;
+    qsubmit_double_array "ashs_stg4" "$SIDES" "$TRIDS" $ASHS_ROOT/bin/ashs_bootstrap_qsub.sh
+    ;;
 
     5)
     # Bootstrap voting
-    echo "Running stage 5: Bootstrap label fusion" 
-    qsubmit_single_array "ashs_stg5" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 1 ;;
+    qsubmit_single_array "ashs_stg5" "$SIDES" $ASHS_ROOT/bin/ashs_voting_qsub.sh 1
+    ;;
 
     6)
     # Final QA
-    echo "Running stage 6: Final QA"
-    qsubmit_sync "ashs_stg6" $ASHS_ROOT/bin/ashs_finalqa_qsub.sh ;;
+    qsubmit_sync "ashs_stg6" $ASHS_ROOT/bin/ashs_finalqa_qsub.sh
+    ;;
   
     7) 
     # Statistics & Volumes
-    echo "Running stage 7: Statistics and Volumes"
-    qsubmit_sync "ashs_stg7" $ASHS_ROOT/bin/ashs_extractstats_qsub.sh ;;
+    qsubmit_sync "ashs_stg7" $ASHS_ROOT/bin/ashs_extractstats_qsub.sh
+    ;;
 
   esac  
+
+  # Run the validity check
+  ashs_check_main $STAGE || exit -1
 
 done

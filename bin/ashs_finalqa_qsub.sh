@@ -102,3 +102,4 @@ T2-MRI & InitSeg & BiasDetect & FinalSeg\\\\
 \\end{tabular}
 LATEX
 
+job_progress 1

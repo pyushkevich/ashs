@@ -44,3 +44,6 @@ BLOCK1
 
 # Just run label fusion
 ashs_label_fusion_apply $BOOTSTRAP
+
+# Report progress
+job_progress 1

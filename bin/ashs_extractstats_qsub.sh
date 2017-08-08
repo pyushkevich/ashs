@@ -120,3 +120,6 @@ if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
   echo $ASHS_SUBJID $ICV > $WSTAT/${ASHS_SUBJID}_icv.txt
 
 fi
+
+# Report final progress
+job_progress 1

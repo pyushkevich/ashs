@@ -53,3 +53,6 @@ cd $ASHS_WORK
 
 # Run ANTS with current image as fixed, training image as moving
 ashs_ants_pairwise $ASHS_WORK $side $tid $WREG 0
+
+# Report progress
+job_progress 1

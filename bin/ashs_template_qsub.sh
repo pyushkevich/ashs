@@ -71,6 +71,9 @@ fi
 # --- RIGID ALIGNMENT T1/T2 ---
 ashs_align_t1t2 $ASHS_WORK $WFSL
 
+# Report some progress
+job_progress 0.25
+
 # Use FLIRT to register T1 to template
 if [[ -f $SUBJ_AFF_T1TEMP_MAT && $ASHS_SKIP_RIGID ]]; then
 
@@ -109,6 +112,9 @@ else
 
 fi
 
+# Report some more progress
+job_progress 0.5
+
 # Use ANTS to warp the ASHS_MPRAGE image to the template
 if [[ $ASHS_SKIP_ANTS && -f $SUBJ_T1TEMP_WARP ]]; then
 
@@ -123,6 +129,9 @@ else
       -gm $TEMP_T1_MASK
 
 fi
+
+# Report some more progress
+job_progress 0.9
 
 # Apply the transformation to the T1 image and to the T1 segmentation
 greedy -d 3 -rm $SUBJ_MPRAGE $WANT/reslice_mprage_to_template.nii.gz \
@@ -159,3 +168,7 @@ fi
 if [[ $ASHS_TIDY ]]; then
 	rm -rf $ASHS_WORK/tse_histmatch.nii.gz $ASHS_WORK/mprage_histmatch.nii.gz
 fi
+
+# Report final progress
+job_progress 1
+

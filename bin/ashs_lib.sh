@@ -84,6 +84,9 @@ function gnu_parallel_qsub()
 
   export NSLOTS=1
 
+  # Set the ASHS_JOB_INDEX variable using the convenient PARALLEL_SEQ variable
+  export ASHS_JOB_INDEX=$((PARALLEL_SEQ-1))
+
   echo "Starting parallel job $MYNAME"
   bash $* &> $ASHS_WORK/dump/${MYNAME}.o$(date +%Y%m%d_%H%M%S)
   echo "Parallel job $MYNAME done"
@@ -92,12 +95,49 @@ function gnu_parallel_qsub()
   TMPDIR=$PARENTTMPDIR
 }
 
+# Report the progress for a job - pass a float between 0 and 1 for the particular
+# job that has been qsubbed - this function takes care of figuring out where it
+# fits into the overall progress
+#
+# This function relies on ASHS_JOB_INDEX, ASHS_JOB_COUNT, ASHS_BATCH_PSTART, ASHS_BATCH_PEND
+# variables being properly set in order to assemble the progress, and on ASHS_HOOK_SCRIPT to
+# report the actual progress
+function job_progress()
+{
+  # Read the reported progress
+  local PROGRESS=${1}
+
+  # The start and end for the current chunk
+  local CHUNK_PSTART CHUNK_PEND
+
+  # Figure out the start and end of this particular job
+  read CHUNK_PSTART CHUNK_PEND <<<$(
+    echo 1 | awk -v bs=$ASHS_BATCH_PSTART -v be=$ASHS_BATCH_PEND \
+      -v j=$ASHS_JOB_INDEX -v n=$ASHS_JOB_COUNT \
+      '{print bs + ((be - bs) * j) / n, bs + ((be - bs) * (j+1)) / n}')
+
+  # Send this information to the hook script
+  echo "CHUNK $ASHS_BATCH_PSTART $ASHS_BATCH_PEND"
+
+  echo 1 | awk -v bs=$ASHS_BATCH_PSTART -v be=$ASHS_BATCH_PEND \
+      -v j=$ASHS_JOB_INDEX -v n=$ASHS_JOB_COUNT \
+      '{print bs + ((be - bs) * j) / n, bs + ((be - bs) * (j+1)) / n}'
+
+  echo "CHUNK $CHUNK_PSTART $CHUNK_PEND $PROGRESS"
+  bash $ASHS_HOOK_SCRIPT progress $CHUNK_PSTART $CHUNK_PEND $PROGRESS
+}
+
 
 # Submit a job to the queue (or just run job) and wait until it finishes
 function qsubmit_sync()
 {
   local MYNAME=$1
   shift 1
+
+  # Set the number of ASHS jobs that are currently running
+  ASHS_JOB_COUNT=1
+  ASHS_JOB_INDEX=0
+  export ASHS_JOB_COUNT ASHS_JOB_INDEX
 
   if [[ $ASHS_USE_QSUB ]]; then
     qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $MYNAME $*
@@ -116,6 +156,11 @@ function qsubmit_single_array()
 
   # Generate unique name to prevent clashing with qe
   local UNIQ_NAME=${NAME}_${$}
+
+  # Set the number of ASHS jobs that are currently running
+  ASHS_JOB_COUNT=$(echo $PARAM | wc -w)
+  ASHS_JOB_INDEX=0
+  export ASHS_JOB_COUNT ASHS_JOB_INDEX
 
   # Special handling for GNU parallel
   if [[ $ASHS_USE_PARALLEL ]]; then
@@ -137,6 +182,9 @@ function qsubmit_single_array()
         fake_qsub ${NAME}_${p1} $* $p1
 
       fi
+
+      ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+
     done
 
   fi
@@ -154,6 +202,13 @@ function qsubmit_double_array()
   local PARAM1=$2
   local PARAM2=$3
   shift 3;
+
+  # Set the number of ASHS jobs that are currently running
+  local N1=$(echo $PARAM1 | wc -w)
+  local N2=$(echo $PARAM2 | wc -w)
+  ASHS_JOB_COUNT=$((N1 * N2))
+  ASHS_JOB_INDEX=0
+  export ASHS_JOB_COUNT ASHS_JOB_INDEX
 
   # Generate unique name to prevent clashing with qe
   local UNIQ_NAME=${NAME}_${$}
@@ -178,6 +233,9 @@ function qsubmit_double_array()
           fake_qsub ${NAME}_${p1}_${p2} $* $p1 $p2
 
         fi
+
+        ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+
       done
     done
 
@@ -187,37 +245,6 @@ function qsubmit_double_array()
   qwait "${UNIQ_NAME}_*"
 }
 
-
-      
-
-
-
-# Submit an array of jobs to the queue
-function qsubmit_array()
-{
-  local NAME=$1
-  local SIZE=$2
-  local CMD="$3 $4 $5 $6 $7 $8 $9"
-
-  if [[ $ASHS_USE_QSUB ]]; then
-    qsub $QOPTS -t 1-${SIZE} -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $NAME $CMD
-  else
-    for ((i=1; i<=$SIZE;i++)); do
-
-      local PARENTTMPDIR=$TMPDIR
-      TMPDIR=$(get_tmpdir)
-      export TMPDIR
-
-      local SGE_TASK_ID=$i
-      export SGE_TASK_ID
-
-      bash $CMD 2>&1 | tee $ASHS_WORK/dump/${NAME}.o$(date +%Y%m%d_%H%M%S)
-
-      rm -rf $TMPDIR
-      TMPDIR=$PARENTTMPDIR
-    done
-  fi
-}
 
 # Wait for qsub to finish
 function qwait() 
@@ -1606,6 +1633,225 @@ function ashs_atlas_adaboost_train()
   qsubmit_double_array "ashs_bl" "${BLEXP[*]}" "usegray nogray" \
     $ASHS_ROOT/bin/ashs_function_qsub.sh \
     ashs_xval_bl
+}
+
+# This function checks whether ashs_main successfully completed each stage
+function ashs_check_main()
+{
+  local STAGE=${1?}
+
+  # Generate the variables
+  ashs_subj_vars $ASHS_WORK
+
+  # Create a temporary file to hold the list of files to check (easier than array)
+  local LISTFILE=$ASHS_WORK/.checklist
+  local MISSFILE=$ASHS_WORK/.missing
+  rm -rf $LISTFILE $MISSFILE
+
+  # TODO: these things should be declared as variables in a script like
+  # ashs_subj_side_vars
+  local MADIR=$ASHS_WORK/multiatlas
+  local BSDIR=$ASHS_WORK/bootstrap
+
+  # List of training ids
+  local TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)
+
+  # The following file specifies which files must exist in which stages of atlas build
+  cat > $LISTFILE <<-HEREDOC_CHECK_GLOBAL
+    1,$SUBJ_MPRAGE
+    1,$SUBJ_TSE
+    1,$SUBJ_AFF_T1TEMP_MAT 
+    1,$SUBJ_AFF_T1TEMP_INVMAT
+    1,$SUBJ_T1TEMP_WARP 
+    1,$SUBJ_T1TEMP_INVWARP
+    1,$SUBJ_AFF_T2T1_MAT
+    1,$SUBJ_AFF_T2T1_INVMAT
+		HEREDOC_CHECK_GLOBAL
+
+  for side in ${SIDES}; do
+
+    ashs_subj_side_vars $ASHS_WORK $side
+
+    cat >> $LISTFILE <<-HEREDOC_CHECK_BYSIDE
+      1,$SUBJ_SIDE_TSE_TO_CHUNKTEMP
+      1,$SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP
+      1,$SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+      1,$SUBJ_SIDE_TSE_NATCHUNK
+      3,$MADIR/fusion/lfseg_heur_${side}.nii.gz
+      3,$MADIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
+      3,$MADIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
+      5,$BSDIR/fusion/lfseg_heur_${side}.nii.gz
+      5,$BSDIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
+      5,$BSDIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
+      6,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_heur.nii.gz
+      6,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_usegray.nii.gz
+      6,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_nogray.nii.gz
+			HEREDOC_CHECK_BYSIDE
+
+    for tid in ${TRIDS}; do
+
+      local TDIR=tseg_${side}_train${tid}
+
+      # TODO: get rid of confusing naming discrepancies between multiatlas and 
+      # bootstrap modes
+      cat >> $LISTFILE <<-HEREDOC_CHECK_BY_ATLAS_SIDE
+        2,$MADIR/$TDIR/greedy_atlas_to_subj_affine.mat
+        2,$MADIR/$TDIR/greedy_atlas_to_subj_warp.nii.gz
+        2,$MADIR/$TDIR/atlas_to_native.nii.gz
+        2,$MADIR/$TDIR/atlas_to_native_segvote.nii.gz
+        4,$BSDIR/$TDIR/sqrt_fwd.mat
+        4,$BSDIR/$TDIR/sqrt_inv.mat
+        4,$BSDIR/$TDIR/greedy_warp.nii.gz
+        4,$BSDIR/$TDIR/atlas_to_native.nii.gz
+        4,$BSDIR/$TDIR/atlas_to_native_segvote.nii.gz
+				HEREDOC_CHECK_BY_ATLAS_SIDE
+      
+    done
+
+  done
+
+  # Read lines in the file and check the existence of each file
+  local LINE
+  cat $LISTFILE | sort -n -t ',' | while read LINE; do
+    local CHK_STAGE=$(echo $LINE | cut -d ',' -f 1)
+    local CHK_FILE=$(echo $LINE | cut -d ',' -f 2)
+    if [[ $STAGE -ge $CHK_STAGE && ! -f $CHK_FILE ]]; then
+      echo $CHK_FILE >> $MISSFILE
+    fi
+  done
+
+  # Check the result
+  local N_MISSING=$(cat $MISSFILE 2>/dev/null | wc -l)
+  if [[ $N_MISSING -gt 0 ]]; then
+
+    # Trim the root from the output
+    local NCHAR=$(echo $ASHS_WORK | wc -c)
+
+    # Get the first missing file
+    local FIRST_MISSING=$(cat $MISSFILE | head -n 1 | cut -c $((NCHAR+1))- )
+
+    # Report failure
+    bash $ASHS_HOOK_SCRIPT \
+      error "Validity check at end of stage $STAGE detected missing files. \
+      ($FIRST_MISSING and $((N_MISSING-1)) other files)."
+
+    return -1
+
+  else
+
+    # Report success
+    bash $ASHS_HOOK_SCRIPT \
+      info "Validity check at end of stage $STAGE successful"
+
+    return 0
+            
+  fi
+}
+
+# This function checks if the ASHS atlas contains all the necessary files
+function ashs_check_atlas()
+{
+  # Create a temporary file to hold the list of files to check (easier than array)
+  local LISTFILE=$ASHS_WORK/.checklist
+  local MISSFILE=$ASHS_WORK/.missing
+  rm -rf $LISTFILE $MISSFILE
+
+  # While doing the check, see if this might be an old-style atlas
+  local OLD_STYLE=0
+
+  # Check global atlas stuff
+  # TODO: some variables should be defined in a common function
+  cat >> $LISTFILE <<-HEREDOC_CHECK_ATLAS_GLOBAL
+    $ASHS_ATLAS/template/template.nii.gz
+    $ASHS_ATLAS/template/template_bet_mask.nii.gz
+    $ASHS_ATLAS/ashs_atlas_vars.sh
+    $ASHS_ATLAS/ashs_system_config.sh
+    $ASHS_ATLAS/ashs_user_config.sh
+    $ASHS_ATLAS/snap/snaplabels.txt
+		HEREDOC_CHECK_ATLAS_GLOBAL
+
+  # Check stuff by side
+  for side in $SIDES; do
+    cat >> $LISTFILE <<-HEREDOC_CHECK_ATLAS_BYSIDE
+      $ASHS_ATLAS/template/template.nii.gz
+      $ASHS_ATLAS/template/template_bet_mask.nii.gz
+      $ASHS_ATLAS/template/refspace_${side}.nii.gz
+      $ASHS_ATLAS/template/refspace_meanseg_${side}.nii.gz
+      $ASHS_ATLAS/template/refspace_mprage_${side}.nii.gz
+			HEREDOC_CHECK_ATLAS_BYSIDE
+  done
+  
+  # Check stuff by training id
+  for tid in ${TRIDS}; do
+
+    ashs_atlas_vars $tid 0
+    local TDIR=tseg_${side}_train${tid}
+    cat >> $LISTFILE <<-HEREDOC_CHECK_ATLAS_BY_TRAINID
+      $ATLAS_AFF_T2T1_MAT
+      $ATLAS_AFF_T1TEMP_MAT
+      $ATLAS_TSE
+			HEREDOC_CHECK_ATLAS_BY_TRAINID
+
+    for side in ${SIDES}; do
+
+      ashs_atlas_side_vars $tid $side 0
+
+      cat >> $LISTFILE <<-HEREDOC_CHECK_ATLAS_BY_TRAINID_AND_SIDE
+        $ATLAS_T1TEMP_WARP
+        $ATLAS_SIDE_TSE_TO_CHUNKTEMP
+        $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP
+        $ATLAS_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+        $ATLAS_SIDE_TSE_NATCHUNK
+        $ATLAS_SEG
+				HEREDOC_CHECK_ATLAS_BY_TRAINID_AND_SIDE
+
+    done
+  done
+
+  # Read lines in the file and check the existence of each file
+  local CHK_FILE
+  cat $LISTFILE | sort -n -t ',' | while read CHK_FILE; do
+    if [[ ! -f $CHK_FILE ]]; then
+      echo $CHK_FILE >> $MISSFILE
+    fi
+  done
+
+  # Check for the existence of an old-style atlas
+  local OLD_STYLE_WARP=$ASHS_ATLAS/train/train${tid}/ants_t1_to_chunktemp_${side}Warp.nii.gz 
+  local NEW_STYLE_WARP=$ASHS_ATLAS/train/train${tid}/greedy_t1_to_template_${side}_warp.nii.gz
+
+  if [[ -f $OLD_STYLE_WARP && ! -f $NEW_STYLE_WARP ]]; then
+
+    # Report failure
+    bash $ASHS_HOOK_SCRIPT \
+      warning "Your atlas appears to be from an older version of ASHS. \
+          Run ashs_atlas_upgrade.sh to make the atlas compatible with the \
+          current version."
+
+  fi
+
+  # Check the result
+  local N_MISSING=$(cat $MISSFILE 2>/dev/null | wc -l)
+  if [[ $N_MISSING -gt 0 ]]; then
+
+    # Trim the root from the output
+    local NCHAR=$(echo $ASHS_ATLAS | wc -c)
+
+    # Get the first missing file
+    local FIRST_MISSING=$(cat $MISSFILE | head -n 1 | cut -c $((NCHAR+1))- )
+
+    # Report failure
+    bash $ASHS_HOOK_SCRIPT \
+      error "Atlas validity check detected missing files. \
+      ($FIRST_MISSING and $((N_MISSING-1)) other files)."
+
+    return -1
+
+  else
+
+    return 0
+            
+  fi
 }
 
 # This function checks whether all ASHS outputs have been created for a given stage

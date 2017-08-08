@@ -98,6 +98,9 @@ c3d $WREG/refspace.nii.gz  $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 \
 # Bootstrap transform file
 BOOT_WARP=$WREG/greedy_warp.nii.gz
 
+# Report intermittent progress
+job_progress 0.5
+
 # Run ANTS in this space
 
 if [[ -f $BOOT_WARP && $ASHS_SKIP ]]; then
@@ -130,3 +133,5 @@ if [[ $ASHS_TIDY ]]; then
 	rm -rf $BOOT_WARP
 fi
 
+# Report progress
+job_progress 1
