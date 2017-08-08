@@ -641,12 +641,14 @@ BLOCK1
   fi
 
   # Run the label fusion program
+  # note: the raw posteriors command here is for compatibility with old atlases
+  # in which posteriors are not normalized to [0 1] range
   /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
     label_fusion 3 -g $ATLASES -l $ATLSEGS \
       -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
       -pd $ASHS_MALF_PADDING \
       $EXCLCMD \
-      -p ${POSTERIOR} \
+      -p ${POSTERIOR} -raw-posteriors \
       tse_native_chunk_${side}.nii.gz $FNOUT
 }
 
@@ -681,10 +683,12 @@ BLOCK1
 
   # Run the label fusion program
 	local RESULT=$TDIR/fusion/lfseg_raw_${side}.nii.gz
+  # note: the raw posteriors command here is for compatibility with old atlases
+  # in which posteriors are not normalized to [0 1] range
   label_fusion 3 -g $ATLASES -l $ATLSEGS \
     -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
     -pd $ASHS_MALF_PADDING \
-    -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
+    -p $TDIR/fusion/posterior_${side}_%03d.nii.gz -raw-posteriors \
     tse_native_chunk_${side}.nii.gz $RESULT
 
   # If there are heuristics, make sure they are supplied to the LF program
@@ -699,11 +703,13 @@ BLOCK1
       echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
       done)
 
+    # note: the raw posteriors command here is for compatibility with old atlases
+    # in which posteriors are not normalized to [0 1] range
 		label_fusion 3 -g $ATLASES -l $ATLSEGS \
 			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
       -pd $ASHS_MALF_PADDING \
 			$EXCLCMD \
-      -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
+      -p $TDIR/fusion/posterior_${side}_%03d.nii.gz -raw-posteriors \
 			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
 
 	else
@@ -735,11 +741,13 @@ BLOCK1
       echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
       done)
 
+    # note: the raw posteriors command here is for compatibility with old atlases
+    # in which posteriors are not normalized to [0 1] range
 		label_fusion 3 -g $ATLASES -l $ATLSEGS \
 			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
       -pd $ASHS_MALF_PADDING \
 			$EXCLCMD \
-      -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz \
+      -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz -raw-posteriors \
 			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz
 
     # Rerun AdaBoost
@@ -1470,12 +1478,14 @@ function ashs_xval_loo()
     fi
 
     # Run the label fusion program
+    # note: the raw posteriors command here is for compatibility with old atlases
+    # in which posteriors are not normalized to [0 1] range
     /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
       label_fusion 3 -g $ATLASES -l $ATLSEGS \
         -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
         -pd $ASHS_MALF_PADDING \
         $EXCLCMD \
-        -p ${POSTERIOR} \
+        -p ${POSTERIOR} -raw-posteriors \
         $LOODIR/tse_native_chunk_${side}.nii.gz $FNOUT
   fi
 }
