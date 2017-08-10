@@ -58,9 +58,9 @@ function usage()
 		                    of segmentations and have SGE, it is better to run each segmentation 
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
-		  -q OPTS|script    Pass in additional options to SGE's qsub. Also enables -Q option above.
-		                    Alternatively, you can provide path to an executable bash script that will
-		                    be called by ASHS to retrieve SGE options at each stage. See "SGE options"
+		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
+		  -z script         Provide a path to an executable script that will be used to retrieve SGE or
+		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
@@ -90,18 +90,14 @@ function usage()
 		  7:                volumes and statistics
 
 		Environment Variables:
-		  ASHS_ROOT                 Path to the ASHS root directory
-		  ASHS_HOOK_XXX             See documentation for -H above
-		  ASHS_QSUB_OPTS            Same as options passed to -q flag
-		  ASHS_QSUB_STAGE_OPTS      Array variable, allowing you to specify additional options
-		                            to Qsub for different stages of ASHS. For example, you may
-		                            find it more efficient to provide multiple cores for stages 1/3
+		  ASHS_ROOT         Path to the ASHS root directory
+		  ASHS_HOOK_XXX     See documentation for -H above
 		notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
 
 		SGE Options:
-		  You can have detailed control over SGE options by passing a custom shell script to the -q
+		  You can have detailed control over SGE options by passing a custom shell script to the -z
 		  option. ASHS will call this shell script with the working directory as the first parameter
 		  and stage as the second parameter. The script should print to stdout the SGE (qsub) options
 		  that should be used for this stage. This allows you to allocate resources for each stage.
@@ -133,6 +129,7 @@ fi
 unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
 unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
+unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK
 
 # Set the default hook script - which does almost nothing
 unset ASHS_USE_CUSTOM_HOOKS
@@ -141,7 +138,7 @@ unset ASHS_USE_CUSTOM_HOOKS
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:HNTdhVQP" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:z:HNTdhVQP" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;
@@ -155,6 +152,7 @@ while getopts "g:f:w:s:a:q:I:C:r:HNTdhVQP" opt; do
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
+    z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     H) ASHS_USE_CUSTOM_HOOKS=1;;
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
@@ -254,11 +252,21 @@ if [[ $ASHS_USE_QSUB ]]; then
     echo "-Q flag used, but SGE is not present."
     exit -1;
   fi
-  echo "Using SGE with root $SGE_ROOT and options $ASHS_QSUB_OPTS"
+  if [[ $ASHS_QSUB_HOOK ]]; then
+    if [[ ! -f $ASHS_QSUB_HOOK ]]; then
+      echo "Parameter to -z ($ASHS_QSUB_HOOK) does not point to a file"
+      exit 2
+    fi
+    echo "Using SGE with root $SGE_ROOT and callback script $ASHS_QSUB_HOOK"
+  elif [[ $ASHS_QSUB_OPTS ]]; then 
+    echo "Using SGE with root $SGE_ROOT and options \"$ASHS_QSUB_OPTS\""
+  else
+    echo "Using SGE with root $SGE_ROOT and default options"
+  fi
 elif [[ $ASHS_USE_PARALLEL ]]; then
   echo "Using GNU parallel"
 else
-  echo "Not using SGE"
+  echo "Not using SGE or GNU parallel"
 fi
 
 # Convert the work directory to absolute path
@@ -328,7 +336,6 @@ fi
 source $ASHS_ATLAS/ashs_atlas_vars.sh
 
 # Check the atlas version
-echo $ASHS_ATLAS_VERSION_DATE
 if [[ ! $ASHS_ATLAS_VERSION_DATE || \
   $ASHS_ATLAS_VERSION_DATE -lt $ASHS_OLDEST_COMPAT_DATE ]]; then
   echo "Your atlas was generated before ${ASHS_OLDEST_COMPAT_DATE} and"\
@@ -393,12 +400,13 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
   # Put together qsub options for this stage
   if [[ $ASHS_USE_QSUB ]]; then
 
-    # Is ASHS_USE_QSUB a callback script?
-    if [[ -x $ASHS_USE_QSUB ]]; then
-      QOPTS="$($ASHS_USE_QSUB $ASHS_WORK $STAGE)"
+    # Is there a callback script
+    if [[ $ASHS_QSUB_HOOK ]]; then
+      QOPTS="$(bash $ASHS_QSUB_HOOK $ASHS_WORK $STAGE)"
+      echo "Qsub options for this stage: $QOPTS"
     else
       QOPTS="${ASHS_QSUB_OPTS}"
-    echo "Qsub options for this stage: $QOPTS"
+    fi
   fi
 
   # Send the informational message via hook
