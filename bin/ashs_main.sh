@@ -265,11 +265,11 @@ fi
 
 # Check the atlas version
 if [[ !ASHS_ATLAS_VERSION_DATE || \
-  $ASHS_ATLAS_VERSION_DATE -lt $ASHS_OLDEST_COMPAT_DATE ]];
-  echo "Your atlas was generated before ${ASHS_OLDEST_COMPAT_DATE} and "
-  echo "is not compatible with the current ASHS version. Please obtain "
-  echo "a newer version of the atlas or upgrade your atlas using the "
-  echo "script 'ashs_atlas_upgrade.sh'"
+  $ASHS_ATLAS_VERSION_DATE -lt $ASHS_OLDEST_COMPAT_DATE ]]; then
+  echo "Your atlas was generated before ${ASHS_OLDEST_COMPAT_DATE} and"\
+       "is not compatible with the current ASHS version. Please obtain"\
+       "a newer version of the atlas or upgrade your atlas using the"\
+       "script 'ashs_atlas_upgrade.sh'"
   exit 2;
 fi
 
