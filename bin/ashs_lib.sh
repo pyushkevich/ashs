@@ -416,25 +416,30 @@ function ashs_align_t1t2()
     c3d $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
       -reslice-identity -type short -o $TMPDIR/mprage_to_tse_iso.nii.gz
 
-    # Use greedy affine mode to perform registration 
-    greedy -d 3 -a -dof 6 -m MI -n 100x100x10 \
-      -i $TMPDIR/tse_iso.nii.gz $TMPDIR/mprage_to_tse_iso.nii.gz \
-      -o $SUBJ_AFF_T2T1_MAT 
+    # If there is a user-supplied matrix the use it
+    if [[ $ASHS_INPUT_T2T1_MAT && $ASHS_INPUT_T2T1_MODE -eq 1 ]]; then
+
+      # Just use the matrix provided by the user
+      c3d_affine_tool $ASHS_INPUT_T2T1_MAT -o $SUBJ_AFF_T2T1_MAT
+
+    else
+
+      # Provide the initial rigid to Greedy
+      local INIT_RIGID
+      if [[ $ASHS_INPUT_T2T1_MAT ]]; then
+        INIT_RIGID="-ia $ASHS_INPUT_T2T1_MAT"
+      fi
+
+      # Use greedy affine mode to perform registration 
+      greedy -d 3 -a -dof 6 -m MI -n 100x100x10 \
+        -i $TMPDIR/tse_iso.nii.gz $TMPDIR/mprage_to_tse_iso.nii.gz \
+        ${INIT_RIGID} \
+        -o $SUBJ_AFF_T2T1_MAT 
+
+    fi
 
     # Invert the matrix
     c3d_affine_tool $SUBJ_AFF_T2T1_MAT -inv -o $SUBJ_AFF_T2T1_INVMAT
-
-<<'FLIRT_OLD'
-    # Run flirt with T2 as reference (does it matter at this point?)
-    flirt -v -ref $TMPDIR/tse_iso.nii.gz -in $TMPDIR/mprage_to_tse_iso.nii.gz \
-      -omat $WFSL/flirt_intermediate.mat -cost normmi -dof 6 ${ASHS_FLIRT_MULTIMODAL_OPTS?}
-
-    # Convert the T1-T2 transform to ITK
-    c3d_affine_tool $WFSL/flirt_intermediate.mat -ref $TMPDIR/tse_iso.nii.gz \
-			-src $TMPDIR/mprage_to_tse_iso.nii.gz \
-      -fsl2ras -inv -oitk $WFSL/flirt_t2_to_t1_ITK.txt \
-      -o $SUBJ_AFF_T2T1_MAT -inv -o $SUBJ_AFF_T2T1_INVMAT
-FLIRT_OLD
 
   fi
 }
