@@ -263,16 +263,6 @@ else
   exit 2;
 fi
 
-# Check the atlas version
-if [[ !ASHS_ATLAS_VERSION_DATE || \
-  $ASHS_ATLAS_VERSION_DATE -lt $ASHS_OLDEST_COMPAT_DATE ]]; then
-  echo "Your atlas was generated before ${ASHS_OLDEST_COMPAT_DATE} and"\
-       "is not compatible with the current ASHS version. Please obtain"\
-       "a newer version of the atlas or upgrade your atlas using the"\
-       "script 'ashs_atlas_upgrade.sh'"
-  exit 2;
-fi
-
 # Check the heuristics in the atlas
 if [[ -f $ASHS_ATLAS/ashs_heuristics.txt ]]; then
 	ASHS_HEURISTICS=$ASHS_ATLAS/ashs_heuristics.txt
@@ -321,6 +311,17 @@ fi
 
 # Get the number of atlases, other information
 source $ASHS_ATLAS/ashs_atlas_vars.sh
+
+# Check the atlas version
+echo $ASHS_ATLAS_VERSION_DATE
+if [[ ! $ASHS_ATLAS_VERSION_DATE || \
+  $ASHS_ATLAS_VERSION_DATE -lt $ASHS_OLDEST_COMPAT_DATE ]]; then
+  echo "Your atlas was generated before ${ASHS_OLDEST_COMPAT_DATE} and"\
+       "is not compatible with the current ASHS version. Please obtain"\
+       "a newer version of the atlas or upgrade your atlas using the"\
+       "script 'ashs_atlas_upgrade.sh'"
+  exit 2;
+fi
 
 # List of sides for the array qsub commands below
 SIDES="$ASHS_SIDES"
