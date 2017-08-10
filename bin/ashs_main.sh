@@ -88,13 +88,13 @@ function usage()
 		  6:                segmentation Q/A
 		  7:                volumes and statistics
 
-    Environment Variables:
-      ASHS_ROOT                 Path to the ASHS root directory
-      ASHS_HOOK_XXX             See documentation for -H above
-      ASHS_QSUB_OPTS            Same as options passed to -q flag
-      ASHS_QSUB_STAGE_OPTS      Array variable, allowing you to specify additional options
-                                to Qsub for different stages of ASHS. For example, you may
-                                find it more efficient to provide multiple cores for stages 1/3
+		Environment Variables:
+		  ASHS_ROOT                 Path to the ASHS root directory
+		  ASHS_HOOK_XXX             See documentation for -H above
+		  ASHS_QSUB_OPTS            Same as options passed to -q flag
+		  ASHS_QSUB_STAGE_OPTS      Array variable, allowing you to specify additional options
+		                            to Qsub for different stages of ASHS. For example, you may
+		                            find it more efficient to provide multiple cores for stages 1/3
 		notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
@@ -312,7 +312,7 @@ else
   STAGE_END=7
 fi
 
-if [[ ! $STAGE_END || ! $STAGE_START ]]; then
+if [[ ! $STAGE_END || ! $STAGE_START || $STAGE_START -le 0 || $STAGE_END -gt 7 ]]; then
   echo "Wrong stage specification -s $STAGE_SPEC"
   exit -1;
 fi
@@ -385,6 +385,7 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
 
   # Put together qsub options for this stage
   if [[ $ASHS_USE_QSUB ]]; then
+    echo ${ASHS_QSUB_STAGE_OPTS[*]}
     QOPTS="${ASHS_QSUB_OPTS} ${ASHS_QSUB_STAGE_OPTS[STAGE]}"
     echo "qsub options for this stage: $QOPTS"
   fi
