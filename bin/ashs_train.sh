@@ -44,21 +44,23 @@ function usage()
 		                    exists, don't run ANTS/FLIRT again
 		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. By default,
 		                    the whole ashs_train job runs in a single process. If you are on a cluster 
-                        that has SGE, you should really use this flag
-		  -q string         List of additional options to pass to qsub (Sun Grid Engine)
-      -P                Use GNU parallel to run on multiple cores on the local machine. You need to
-                        have GNU parallel installed.
+		                    that has SGE, you should really use this flag
+		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
+		  -z script         Provide a path to an executable script that will be used to retrieve SGE or
+		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
+		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
+		                    have GNU parallel installed.
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		  -V                Display version information and exit
 
 		stages:
-      0                 Initialize atlas directory
-      1                 Build population-specific template
-      2                 Resample each atlas to template space
-      3                 Perform n^2 registration between all atlases
-      4                 Train AdaBoost method
-      5                 Organize final directory
-      6                 Cross-validation      
+		  1                 Initialize atlas directory
+		  2                 Build population-specific template
+		  3                 Resample each atlas to template space
+		  4                 Perform n^2 registration between all atlases
+		  5                 Train AdaBoost method
+		  6                 Organize final directory
+		  7                 Cross-validation      
 
 		data file:
 		  The datafile is a comma-separated file listing, with rows corresponding to input images
@@ -101,6 +103,12 @@ function usage()
 		  See the Yushkevich et al., 2010 Neuroimage paper for the heuristic rules applied there.
 		  The format of the heuristic file can be found in the help for the subfield_slice_rules
 		  program.
+
+		SGE Options:
+		  You can have detailed control over SGE options by passing a custom shell script to the -z
+		  option. ASHS will call this shell script with the working directory as the first parameter
+		  and stage as the second parameter. The script should print to stdout the SGE (qsub) options
+		  that should be used for this stage. This allows you to allocate resources for each stage.
 	USAGETEXT
 }
 
@@ -135,11 +143,12 @@ while getopts "C:D:L:w:s:x:q:r:NdhVQP" opt; do
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
     L) ASHS_LABELFILE=$(dereflink $OPTARG);;
     w) ASHS_WORK=$OPTARG;;
-		s) STAGE_SPEC=$OPTARG;;
-		N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
-    q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
+    s) STAGE_SPEC=$OPTARG;;
+    N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
+    q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
+    z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
     x) ASHS_XVAL=$(dereflink $OPTARG);;
@@ -192,6 +201,7 @@ if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
   exit -2
 fi
 
+
 # Get the list of ids
 ATLAS_ID=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $1}') );
 ATLAS_T1=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $2}') );
@@ -236,13 +246,22 @@ if [[ $ASHS_USE_QSUB ]]; then
     echo "-Q flag used, but SGE is not present."
     exit -1;
   fi
-  echo "Using SGE with root $SGE_ROOT and options $QOPTS"
+  if [[ $ASHS_QSUB_HOOK ]]; then
+    if [[ ! -f $ASHS_QSUB_HOOK ]]; then
+      echo "Parameter to -z ($ASHS_QSUB_HOOK) does not point to a file"
+      exit 2
+    fi
+    echo "Using SGE with root $SGE_ROOT and callback script $ASHS_QSUB_HOOK"
+  elif [[ $ASHS_QSUB_OPTS ]]; then 
+    echo "Using SGE with root $SGE_ROOT and options \"$ASHS_QSUB_OPTS\""
+  else
+    echo "Using SGE with root $SGE_ROOT and default options"
+  fi
 elif [[ $ASHS_USE_PARALLEL ]]; then
   echo "Using GNU parallel"
 else
-  echo "Not using SGE or GNU parallel. This will take FOREVER!!!"
+  echo "Not using SGE or GNU parallel"
 fi
-
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
@@ -255,71 +274,91 @@ if [[ $STAGE_SPEC ]]; then
   STAGE_START=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $1}')
   STAGE_END=$(echo $STAGE_SPEC | awk -F '-' '$0 ~ /^[0-9]+-*[0-9]*$/ {print $NF}')
 else
-  STAGE_START=0
-  STAGE_END=15
+  STAGE_START=1
+  STAGE_END=7
 fi
 
-if [[ ! $STAGE_END || ! $STAGE_START ]]; then
+if [[ ! $STAGE_END || ! $STAGE_START || $STAGE_START -le 0 || $STAGE_END -gt 7 ]]; then
   echo "Wrong stage specification -s $STAGE_SPEC"
   exit -1;
 fi
 
 declare -F
 
+# Names of the different stages
+STAGE_NAMES=(\
+  "Initialize work directory" \
+  "Build template" \
+  "Resample atlases to template" \
+  "Pairwise registration between atlases" \
+  "AdaBoost training and cross-validation" \
+  "Organize final atlas" \
+  "Perform cross-validation")
+
+# If starting at stage other than 1, check for the correct output of
+# the previous stages
+if [[ $STAGE_START -gt 1 ]]; then
+
+  # Run the validity check
+  ashs_check_train $((STAGE_START-1)) || exit -1
+
+fi
+
 # Go through the stages
 for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
 
+  # The desription of the current stage
+  STAGE_TEXT=${STAGE_NAMES[STAGE-1]}
+  echo "****************************************"
+  echo "Starting stage $STAGE: $STAGE_TEXT"
+  echo "****************************************"
+
+  # Put together qsub options for this stage
+  if [[ $ASHS_USE_QSUB ]]; then
+
+    # Is there a callback script
+    if [[ $ASHS_QSUB_HOOK ]]; then
+      QOPTS="$(bash $ASHS_QSUB_HOOK $ASHS_WORK $STAGE)"
+      echo "Qsub options for this stage: $QOPTS"
+    else
+      QOPTS="${ASHS_QSUB_OPTS}"
+    fi
+  fi
+
   case $STAGE in 
 
-    0)
-
+    1)
     # Initialize Directory
-    echo "Running stage 0: initialize work directory"
     ashs_atlas_initialize_directory;;
 
-    1)
-
+    2)
     # The first step is to build a template from the atlas images using the standard
     # code in ANTS. For this, we got to copy all the atlases to a common directory
-    echo "Running stage 1: build template"
-    ashs_check_train 0
     ashs_atlas_build_template;;
 
     2)
-
-    echo "Running stage 2: resample all T2 data to template"
-    ashs_check_train 1
+    # Resample atlas to template
     ashs_atlas_resample_tse_to_template;;
 
     3)
-
     # Perform pairwise registration between all atlases
-    echo "Running stage 3: pairwise registration between atlases"
-    ashs_check_train 2
     ashs_atlas_register_to_rest;;
 
     4)
-
-    # Perform cross-validation experiments
-    echo "Running stage 4: AdaBoost training and cross-validation"
-    ashs_check_train 3
+    # Train error correction
     ashs_atlas_adaboost_train;;
 
     5)
-
     # Organize everything into an atlas that can be used with the main ASHS script
-    echo "Running stage 5: Organize the output directory"
-    ashs_check_train 4
     ashs_atlas_organize_final;;
 
     6)
-
-    # Organize everything into an atlas that can be used with the main ASHS script
-    echo "Running stage 6: Perform cross-validation"
+    # Final cross-validation
     ashs_atlas_organize_xval;;
 
-
-
   esac
+
+  # Run the validity check
+  ashs_check_train $STAGE || exit -1
 
 done

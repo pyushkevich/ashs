@@ -92,7 +92,8 @@ function usage()
 		Environment Variables:
 		  ASHS_ROOT         Path to the ASHS root directory
 		  ASHS_HOOK_XXX     See documentation for -H above
-		notes:
+
+		Misc Notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
 
