@@ -35,7 +35,7 @@ fi
 source ${ASHS_ROOT?}/bin/ashs_common_master.sh
 
 # The atlas directory must be provided as the first input
-ASHS_ATLAS=${1?}
+ASHS_ATLAS=${1?  "Provide the path to the atlas to upgrade"}
 
 # Check for the vars file
 if [[ ! -f $ASHS_ATLAS/ashs_atlas_vars.sh ]]; then
@@ -66,3 +66,12 @@ for aff in $(find $ASHS_ATLAS -name 'flirt_t2_to_t1_ITK.txt'); do
   echo "Converting $aff"
   c3d_affine_tool -itk $aff -o $(dirname $aff)/flirt_t2_to_t1.mat
 done
+
+# The version information in the atlas needs to be brought up to date
+source ${ASHS_ROOT}/bin/ashs_version.sh
+  cat > $ASHS_ATLAS/ashs_atlas_vars.sh <<-CONTENT
+		ASHS_ATLAS_VERSION_FULL=${ASHS_VERSION_FULL}
+		ASHS_ATLAS_VERSION_DATE=${ASHS_VERSION_DATE}
+		ASHS_ATLAS_N=${ASHS_ATLAS_N}
+	CONTENT
+
