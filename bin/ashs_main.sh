@@ -58,8 +58,9 @@ function usage()
 		                    of segmentations and have SGE, it is better to run each segmentation 
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
-		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
-                        You may also specify SGE options with ASHS_QSUB_STAGE_OPTS, see below.
+		  -q OPTS|script    Pass in additional options to SGE's qsub. Also enables -Q option above.
+		                    Alternatively, you can provide path to an executable bash script that will
+		                    be called by ASHS to retrieve SGE options at each stage. See "SGE options"
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
@@ -98,6 +99,12 @@ function usage()
 		notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
+
+		SGE Options:
+		  You can have detailed control over SGE options by passing a custom shell script to the -q
+		  option. ASHS will call this shell script with the working directory as the first parameter
+		  and stage as the second parameter. The script should print to stdout the SGE (qsub) options
+		  that should be used for this stage. This allows you to allocate resources for each stage.
 	USAGETEXT
 }
 
@@ -385,9 +392,13 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
 
   # Put together qsub options for this stage
   if [[ $ASHS_USE_QSUB ]]; then
-    echo ${ASHS_QSUB_STAGE_OPTS[*]}
-    QOPTS="${ASHS_QSUB_OPTS} ${ASHS_QSUB_STAGE_OPTS[STAGE]}"
-    echo "qsub options for this stage: $QOPTS"
+
+    # Is ASHS_USE_QSUB a callback script?
+    if [[ -x $ASHS_USE_QSUB ]]; then
+      QOPTS="$($ASHS_USE_QSUB $ASHS_WORK $STAGE)"
+    else
+      QOPTS="${ASHS_QSUB_OPTS}"
+    echo "Qsub options for this stage: $QOPTS"
   fi
 
   # Send the informational message via hook
