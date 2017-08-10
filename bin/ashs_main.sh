@@ -59,6 +59,7 @@ function usage()
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
 		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
+                        You may also specify SGE options with ASHS_QSUB_STAGE_OPTS, see below.
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
@@ -87,6 +88,13 @@ function usage()
 		  6:                segmentation Q/A
 		  7:                volumes and statistics
 
+    Environment Variables:
+      ASHS_ROOT                 Path to the ASHS root directory
+      ASHS_HOOK_XXX             See documentation for -H above
+      ASHS_QSUB_OPTS            Same as options passed to -q flag
+      ASHS_QSUB_STAGE_OPTS      Array variable, allowing you to specify additional options
+                                to Qsub for different stages of ASHS. For example, you may
+                                find it more efficient to provide multiple cores for stages 1/3
 		notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
@@ -139,7 +147,7 @@ while getopts "g:f:w:s:a:q:I:C:r:HNTdhVQP" opt; do
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
-    q) ASHS_USE_QSUB=1; QOPTS=$OPTARG;;
+    q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     H) ASHS_USE_CUSTOM_HOOKS=1;;
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
@@ -239,7 +247,7 @@ if [[ $ASHS_USE_QSUB ]]; then
     echo "-Q flag used, but SGE is not present."
     exit -1;
   fi
-  echo "Using SGE with root $SGE_ROOT and options $QOPTS"
+  echo "Using SGE with root $SGE_ROOT and options $ASHS_QSUB_OPTS"
 elif [[ $ASHS_USE_PARALLEL ]]; then
   echo "Using GNU parallel"
 else
@@ -374,6 +382,12 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
   echo "****************************************"
   echo "Starting stage $STAGE: $STAGE_TEXT"
   echo "****************************************"
+
+  # Put together qsub options for this stage
+  if [[ $ASHS_USE_QSUB ]]; then
+    QOPTS="${ASHS_QSUB_OPTS} ${ASHS_QSUB_STAGE_OPTS[STAGE]}"
+    echo "qsub options for this stage: $QOPTS"
+  fi
 
   # Send the informational message via hook
   bash $ASHS_HOOK_SCRIPT info "Started stage $STAGE: $STAGE_TEXT"
