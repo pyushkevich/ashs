@@ -125,6 +125,9 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+# Special actions (e.g., print version info, etc.)
+unset ASHS_SPECIAL_ACTION
+
 # Read the options
 while getopts "C:D:L:w:s:x:q:r:NdhVQP" opt; do
   case $opt in
@@ -142,7 +145,7 @@ while getopts "C:D:L:w:s:x:q:r:NdhVQP" opt; do
     x) ASHS_XVAL=$(dereflink $OPTARG);;
     d) set -x -e;;
     h) usage; exit 0;;
-    V) vers; exit 0;;
+    V) ASHS_SPECIAL_ACTION=vers;;
     \?) echo "Unknown option $OPTARG"; exit 2;;
     :) echo "Option $OPTARG requires an argument"; exit 2;;
 
@@ -156,6 +159,20 @@ if [[ ! $ASHS_ROOT ]]; then
 elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
   echo "ASHS_ROOT must point to an absolute path, not a relative path"
   exit -2
+fi
+
+# Set the config file
+if [[ ! $ASHS_CONFIG ]]; then
+  ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+fi
+
+# Load the library and read the config file in the process
+source $ASHS_ROOT/bin/ashs_lib.sh
+
+# Just print version?
+if [[ $ASHS_SPECIAL_ACTION == "vers" ]]; then
+  vers
+  exit 0
 fi
 
 # Check the listfile
@@ -174,14 +191,6 @@ if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
   echo "Cannot use SGE (-Q) and GNU Parallel (-P) at the same time"
   exit -2
 fi
-
-# Set the config file
-if [[ ! $ASHS_CONFIG ]]; then
-  ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
-fi
-
-# Load the library and read the config file in the process
-source $ASHS_ROOT/bin/ashs_lib.sh
 
 # Get the list of ids
 ATLAS_ID=( $(cat $ASHS_TRAIN_MANIFEST | awk '! /^[ \t]*#/ {print $1}') );

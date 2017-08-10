@@ -28,6 +28,9 @@
 # A library of routines shared by all the ASHS scripts
 # ----------------------------------------------------
 
+# Read the version information
+source ${ASHS_ROOT?}/bin/ashs_version.sh
+
 # Source the master script in order to get the PATH variable right
 source ${ASHS_ROOT?}/bin/ashs_common_master.sh
 
@@ -257,8 +260,8 @@ function qwait()
 # Report the version number
 function vers() 
 {
-  ASHS_VERSION_SVN=$(cat $ASHS_ROOT/bin/ashs_version.txt)
-  echo $ASHS_VERSION_SVN
+  echo "ASHS version ${ASHS_VERSION_FULL}"
+  echo "Release date: ${ASHS_VERSION_DATE}"
 }
 
 
@@ -1208,7 +1211,8 @@ function ashs_atlas_organize_final()
 
   # Generate a file that makes this an ASHS atlas
   cat > $FINAL/ashs_atlas_vars.sh <<-CONTENT
-		ASHS_ATLAS_VERSION=$(ashs_version)
+		ASHS_ATLAS_VERSION_FULL=${ASHS_VERSION_FULL}
+		ASHS_ATLAS_VERSION_DATE=${ASHS_VERSION_DATE}
 		ASHS_ATLAS_N=$N
 	CONTENT
 

@@ -122,6 +122,8 @@ unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 # Set the default hook script - which does almost nothing
 unset ASHS_USE_CUSTOM_HOOKS
 
+# Special actions (e.g., print version info, etc.)
+unset ASHS_SPECIAL_ACTION
 
 # Read the options
 while getopts "g:f:w:s:a:q:I:C:r:HNTdhVQP" opt; do
@@ -143,7 +145,7 @@ while getopts "g:f:w:s:a:q:I:C:r:HNTdhVQP" opt; do
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
     d) set -x -e;;
     h) usage; exit 0;;
-    V) vers; exit 0;;
+    V) ASHS_SPECIAL_ACTION=vers;;
     \?) echo "Unknown option $OPTARG"; exit 2;;
     :) echo "Option $OPTARG requires an argument"; exit 2;;
 
@@ -187,9 +189,13 @@ if [[ ! -x $ASHS_HOOK_SCRIPT ]]; then
   exit -2
 fi
 
-# Set the config file
+# Set the config file (from atlas if possible)
 if [[ ! $ASHS_CONFIG ]]; then
-  ASHS_CONFIG=$ATLAS/ashs_user_config.sh
+  if [[ -f $ASHS_CONFIG/ashs_user_config.sh ]]; then
+    ASHS_CONFIG=$ATLAS/ashs_user_config.sh
+  else
+    ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
+  fi
 fi
 
 # Check that parallel and qsub are not both on
@@ -200,6 +206,12 @@ fi
 
 # Load the library. This also processes the config file
 source $ASHS_ROOT/bin/ashs_lib.sh
+
+# Just print version?
+if [[ $ASHS_SPECIAL_ACTION == "vers" ]]; then
+  vers
+  exit 0
+fi
 
 # Check if the required parameters were passed in
 echo "Atlas    : ${ATLAS?    "Directory for atlas was not specified. See $0 -h"}"
@@ -248,6 +260,16 @@ elif [[ -f $ASHS_ROOT/data/$ATLAS/ashs_atlas_vars.sh ]]; then
   ASHS_ATLAS=$ASHS_ROOT/data/$ATLAS
 else
   echo "Atlas directory must be specified"
+  exit 2;
+fi
+
+# Check the atlas version
+if [[ !ASHS_ATLAS_VERSION_DATE || \
+  $ASHS_ATLAS_VERSION_DATE -lt $ASHS_OLDEST_COMPAT_DATE ]];
+  echo "Your atlas was generated before ${ASHS_OLDEST_COMPAT_DATE} and "
+  echo "is not compatible with the current ASHS version. Please obtain "
+  echo "a newer version of the atlas or upgrade your atlas using the "
+  echo "script 'ashs_atlas_upgrade.sh'"
   exit 2;
 fi
 
