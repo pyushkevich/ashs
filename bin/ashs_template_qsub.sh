@@ -98,11 +98,6 @@ else
   greedy -d 3 -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
     -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
 
-  # Try using ANTS
-	# ANTS 3 -m MI[$TEMP_T1_FULL,$ASHS_WORK/mprage.nii.gz,1,32] -o $WAFF/antsaffineonly.nii.gz -i 0 
-	# WarpImageMultiTransform 3 $ASHS_WORK/mprage.nii.gz $WAFF/test_ants_affine.nii.gz \
-	#	 -R $TEMP_T1_FULL $WAFF/antsaffineonlyAffine.txt
-
   # Store the transform
   cp -a $WAFF/greedy_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
   ln -sf $WAFF/test_greedy_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
@@ -168,6 +163,11 @@ fi
 if [[ $ASHS_TIDY ]]; then
 	rm -rf $ASHS_WORK/tse_histmatch.nii.gz $ASHS_WORK/mprage_histmatch.nii.gz
 fi
+
+# Generate a QC image for the registration
+for side in $SIDES; do
+  ashs_registration_qc $side
+done
 
 # Report final progress
 job_progress 1

@@ -170,6 +170,19 @@ elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
   exit -2
 fi
 
+
+# Create the working directory and the dump directory
+mkdir -p $ASHS_WORK/dump
+
+# Get rid of symlinks in the work path and make it global
+ASHS_WORK=$(dereflink $ASHS_WORK)
+
+# Redirect output/error to a log file in the dump directory
+LOCAL_LOG=$(date +ashs_train.o%Y%m%d_%H%M%S)
+mkdir -p $ASHS_WORK/dump
+exec > >(tee -i $ASHS_WORK/dump/$LOCAL_LOG)
+exec 2>&1
+
 # Set the config file
 if [[ ! $ASHS_CONFIG ]]; then
   ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
@@ -234,11 +247,8 @@ if [[ $ASHS_HEURISTICS ]]; then
   fi
 fi
  
-# Create the working directory and the dump directory
-mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
-
-# Get rid of symlinks in the work path and make it global
-ASHS_WORK=$(dereflink $ASHS_WORK)
+# Create the final directory (why?)
+mkdir -p $ASHS_WORK/final
 
 # Whether we are using QSUB
 if [[ $ASHS_USE_QSUB ]]; then

@@ -185,6 +185,19 @@ elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
   exit -2
 fi
 
+# Convert the work directory to absolute path
+mkdir -p ${ASHS_WORK?}
+ASHS_WORK=$(cd $ASHS_WORK; pwd)
+if [[ ! -d $ASHS_WORK ]]; then 
+  echo "Work directory $ASHS_WORK does not exist";
+fi
+
+# Redirect output/error to a log file in the dump directory
+LOCAL_LOG=$(date +ashs_main.o%Y%m%d_%H%M%S)
+mkdir -p $ASHS_WORK/dump
+exec > >(tee -i $ASHS_WORK/dump/$LOCAL_LOG)
+exec 2>&1
+
 # Handle the hook scripts
 if [[ $ASHS_USE_CUSTOM_HOOKS ]]; then
 
@@ -294,13 +307,6 @@ else
   echo "Not using SGE or GNU parallel"
 fi
 
-# Convert the work directory to absolute path
-mkdir -p ${ASHS_WORK?}
-ASHS_WORK=$(cd $ASHS_WORK; pwd)
-if [[ ! -d $ASHS_WORK ]]; then 
-  echo "Work directory $ASHS_WORK does not exist";
-fi
-
 # Check the atlas location
 if [[ -f $ATLAS/ashs_atlas_vars.sh ]]; then
   ASHS_ATLAS=$ATLAS;
@@ -341,7 +347,7 @@ if [[ ! $ASHS_SUBJID ]]; then
 fi
 
 # Create the working directory and the dump directory
-mkdir -p $ASHS_WORK $ASHS_WORK/dump $ASHS_WORK/final
+mkdir -p $ASHS_WORK/final
 
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then

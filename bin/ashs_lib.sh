@@ -2012,3 +2012,136 @@ function ashs_check_train()
   echo "*****************************"
   if [[ $NERR -gt 0 ]]; then exit -1; fi
 }
+
+# This function is used to generate a QA screenshot focusing on initial registration
+# TODO: this code is not robust to all orientations, it should be fixed by
+# adding IRISSlicer to C3D and allowing slice direction to be specified in
+# anatomical terms (e.g., RSP). For now it seems reasonably ok.
+function ashs_registration_qc()
+{
+  local side=${1?}
+
+  # Load the main variables
+  ashs_subj_side_vars $ASHS_WORK $side
+
+  # We want to show the registration to the template and between the T1 and T2
+  # We show the template as the reference space, and then show the T1 and T2
+  # chunks resampled to the template
+  local TEMP=${ASHS_ATLAS}/template/refspace_mprage_${side}.nii.gz
+  local TEMPSEG=${ASHS_ATLAS}/template/refspace_meanseg_${side}.nii.gz
+
+  # Generate coronal slices
+  local SLICESPEC="16.6%:16.6%:88%"
+  c3d \
+    -type uchar \
+    -int 0 $TEMPSEG -swapdim RSA -trim 40x40x0mm -resample-iso min -as SS \
+    -int 1 $TEMP -stretch 0 99.5% 0 255 -clip 0 255 \
+    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/cor_temp_%02d.png -clear \
+    -push SS $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
+    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/cor_mprage_%02d.png -clear \
+    -push SS $SUBJ_SIDE_TSE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
+    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/cor_tse_%02d.png
+
+  # Generate sagittal slices
+  SLICESPEC="33%:33%:84%"
+  c3d \
+    -type uchar \
+    -int 0 $TEMPSEG -swapdim ASR -trim 40x40x0mm -resample-iso min -as SS \
+    -int 1 $TEMP -stretch 0 99.5% 0 255 -clip 0 255 \
+    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/sag_temp_%02d.png -clear \
+    -push SS $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
+    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/sag_mprage_%02d.png -clear \
+    -push SS $SUBJ_SIDE_TSE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
+    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/sag_tse_%02d.png
+
+  # Grid all of the pngs
+  for MYPNG in $(ls $TMPDIR/cor_*.png $TMPDIR/sag_*.png); do
+    $ASHS_ROOT/bin/ashs_grid.sh -o 0.25 -s 25 -c white $MYPNG $MYPNG
+    convert $MYPNG -bordercolor Black -border 1x1 $MYPNG
+  done
+
+  # Make montages
+  montage \
+    -tile 7x -geometry +5+5 -mode Concatenate \
+    $TMPDIR/*_temp_*.png  \
+    $TMPDIR/*_mprage_*.png  \
+    $TMPDIR/*_tse_*.png \
+    $TMPDIR/qa.png
+
+  convert  $TMPDIR/qa.png \
+    -bordercolor Black -border 1x1  \
+    $TMPDIR/qa.png
+
+  mkdir -p $ASHS_WORK/qa
+  montage -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
+    $ASHS_WORK/qa/qa_registration_${side}_qa.png
+}
+
+
+# This function is used to generate a QA screenshot focusing on the final
+# segmentation in either the multiatlas or bootstrap directory, and for 
+# either the heur, corr_usegray, or corr_nogray output
+function ashs_segmentation_qc()
+{
+  local side=${1?}
+  local malfmode=${2?}
+  local corrmode=${3?}
+
+  # Load the main variables
+  ashs_subj_side_vars $ASHS_WORK $side
+
+  # The reference space will be the tse_to_native image
+  local REFSPACE=$SUBJ_SIDE_TSE_NATCHUNK
+
+  # The segmentation we wish to show
+  local SEG=$ASHS_WORK/${malfmode}/fusion/lfseg_${corrmode}_${side}.nii.gz
+
+  # The SNAP label file
+  local LABELFILE=$ASHS_ATLAS/snap/snaplabels.txt
+
+  # Generate coronal slices
+  local SLICESPEC="16.6%:16.6%:88%"
+  c3d \
+    -type uchar -int 0 \
+    $SEG -swapdim RSA -trim 40x40x0mm -resample-iso min -as SS \
+    -int 1 $REFSPACE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity -as T2R \
+    -slice z ${SLICESPEC} -oo $TMPDIR/cor_tse_%02d.png -clear \
+    -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity \
+    -slice z ${SLICESPEC} -oo $TMPDIR/cor_mprage_%02d.png -clear \
+    -push T2R -push SS -oli $LABELFILE 0.5 \
+    -slice-all z ${SLICESPEC} -oomc 3 $TMPDIR/cor_seg_%02d.png 
+
+  # Generate sagittal slices
+  SLICESPEC="33%:33%:84%"
+  c3d \
+    -type uchar -int 0 \
+    $SEG -swapdim ASR -trim 40x40x0mm -resample-iso min -as SS \
+    -int 1 $REFSPACE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity -as T2R \
+    -slice z ${SLICESPEC} -oo $TMPDIR/sag_tse_%02d.png -clear \
+    -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity \
+    -slice z ${SLICESPEC} -oo $TMPDIR/sag_mprage_%02d.png -clear \
+    -push T2R -push SS -oli $LABELFILE 0.5 \
+    -slice-all z ${SLICESPEC} -oomc 3 $TMPDIR/sag_seg_%02d.png 
+
+  # Grid all of the pngs
+  for MYPNG in $(ls $TMPDIR/cor_*.png $TMPDIR/sag_*.png); do
+    $ASHS_ROOT/bin/ashs_grid.sh -o 0.25 -s 25 -c white $MYPNG $MYPNG
+    convert $MYPNG -bordercolor Black -border 1x1 $MYPNG
+  done
+
+  # Make montages
+  montage \
+    -tile 7x -geometry +5+5 -mode Concatenate \
+    $TMPDIR/*_tse_*.png  \
+    $TMPDIR/*_mprage_*.png  \
+    $TMPDIR/*_seg_*.png \
+    $TMPDIR/qa.png
+
+  convert  $TMPDIR/qa.png \
+    -bordercolor Black -border 1x1  \
+    $TMPDIR/qa.png
+
+  mkdir -p $ASHS_WORK/qa
+  montage -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
+    $ASHS_WORK/qa/qa_seg_${malfmode}_${corrmode}_${side}_qa.png
+}
