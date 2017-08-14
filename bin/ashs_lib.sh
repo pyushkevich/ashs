@@ -161,7 +161,7 @@ function qsubmit_single_array()
   local UNIQ_NAME=${NAME}_${$}
 
   # Set the number of ASHS jobs that are currently running
-  ASHS_JOB_COUNT=$(echo $PARAM | wc -w)
+  ASHS_JOB_COUNT=$(echo $PARAM | wc -w | xargs)
   ASHS_JOB_INDEX=0
   export ASHS_JOB_COUNT ASHS_JOB_INDEX
 
@@ -207,8 +207,8 @@ function qsubmit_double_array()
   shift 3;
 
   # Set the number of ASHS jobs that are currently running
-  local N1=$(echo $PARAM1 | wc -w)
-  local N2=$(echo $PARAM2 | wc -w)
+  local N1=$(echo $PARAM1 | wc -w | xargs)
+  local N2=$(echo $PARAM2 | wc -w | xargs)
   ASHS_JOB_COUNT=$((N1 * N2))
   ASHS_JOB_INDEX=0
   export ASHS_JOB_COUNT ASHS_JOB_INDEX
