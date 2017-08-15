@@ -1676,15 +1676,16 @@ function ashs_check_main()
   local TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)
 
   # The following file specifies which files must exist in which stages of atlas build
+  # The second number is whether this file should also exist in TIDY mode
   cat > $LISTFILE <<-HEREDOC_CHECK_GLOBAL
-    1,$SUBJ_MPRAGE
-    1,$SUBJ_TSE
-    1,$SUBJ_AFF_T1TEMP_MAT 
-    1,$SUBJ_AFF_T1TEMP_INVMAT
-    1,$SUBJ_T1TEMP_WARP 
-    1,$SUBJ_T1TEMP_INVWARP
-    1,$SUBJ_AFF_T2T1_MAT
-    1,$SUBJ_AFF_T2T1_INVMAT
+    1,1,$SUBJ_MPRAGE
+    1,1,$SUBJ_TSE
+    1,1,$SUBJ_AFF_T1TEMP_MAT 
+    1,1,$SUBJ_AFF_T1TEMP_INVMAT
+    1,1,$SUBJ_T1TEMP_WARP 
+    1,1,$SUBJ_T1TEMP_INVWARP
+    1,1,$SUBJ_AFF_T2T1_MAT
+    1,1,$SUBJ_AFF_T2T1_INVMAT
 		HEREDOC_CHECK_GLOBAL
 
   for side in ${SIDES}; do
@@ -1692,19 +1693,19 @@ function ashs_check_main()
     ashs_subj_side_vars $ASHS_WORK $side
 
     cat >> $LISTFILE <<-HEREDOC_CHECK_BYSIDE
-      1,$SUBJ_SIDE_TSE_TO_CHUNKTEMP
-      1,$SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP
-      1,$SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
-      1,$SUBJ_SIDE_TSE_NATCHUNK
-      3,$MADIR/fusion/lfseg_heur_${side}.nii.gz
-      3,$MADIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
-      3,$MADIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
-      5,$BSDIR/fusion/lfseg_heur_${side}.nii.gz
-      5,$BSDIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
-      5,$BSDIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
-      6,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_heur.nii.gz
-      6,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_usegray.nii.gz
-      6,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_nogray.nii.gz
+      1,1,$SUBJ_SIDE_TSE_TO_CHUNKTEMP
+      1,1,$SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP
+      1,1,$SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+      1,1,$SUBJ_SIDE_TSE_NATCHUNK
+      3,1,$MADIR/fusion/lfseg_heur_${side}.nii.gz
+      3,1,$MADIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
+      3,1,$MADIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
+      5,1,$BSDIR/fusion/lfseg_heur_${side}.nii.gz
+      5,1,$BSDIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
+      5,1,$BSDIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
+      6,1,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_heur.nii.gz
+      6,1,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_usegray.nii.gz
+      6,1,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_nogray.nii.gz
 			HEREDOC_CHECK_BYSIDE
 
     for tid in ${TRIDS}; do
@@ -1714,15 +1715,15 @@ function ashs_check_main()
       # TODO: get rid of confusing naming discrepancies between multiatlas and 
       # bootstrap modes
       cat >> $LISTFILE <<-HEREDOC_CHECK_BY_ATLAS_SIDE
-        2,$MADIR/$TDIR/greedy_atlas_to_subj_affine.mat
-        2,$MADIR/$TDIR/greedy_atlas_to_subj_warp.nii.gz
-        2,$MADIR/$TDIR/atlas_to_native.nii.gz
-        2,$MADIR/$TDIR/atlas_to_native_segvote.nii.gz
-        4,$BSDIR/$TDIR/sqrt_fwd.mat
-        4,$BSDIR/$TDIR/sqrt_inv.mat
-        4,$BSDIR/$TDIR/greedy_warp.nii.gz
-        4,$BSDIR/$TDIR/atlas_to_native.nii.gz
-        4,$BSDIR/$TDIR/atlas_to_native_segvote.nii.gz
+        2,0,$MADIR/$TDIR/greedy_atlas_to_subj_affine.mat
+        2,0,$MADIR/$TDIR/greedy_atlas_to_subj_warp.nii.gz
+        2,1,$MADIR/$TDIR/atlas_to_native.nii.gz
+        2,1,$MADIR/$TDIR/atlas_to_native_segvote.nii.gz
+        4,1,$BSDIR/$TDIR/sqrt_fwd.mat
+        4,1,$BSDIR/$TDIR/sqrt_inv.mat
+        4,0,$BSDIR/$TDIR/greedy_warp.nii.gz
+        4,1,$BSDIR/$TDIR/atlas_to_native.nii.gz
+        4,1,$BSDIR/$TDIR/atlas_to_native_segvote.nii.gz
 				HEREDOC_CHECK_BY_ATLAS_SIDE
       
     done
@@ -1733,9 +1734,12 @@ function ashs_check_main()
   local LINE
   cat $LISTFILE | sort -n -t ',' | while read LINE; do
     local CHK_STAGE=$(echo $LINE | cut -d ',' -f 1)
-    local CHK_FILE=$(echo $LINE | cut -d ',' -f 2)
-    if [[ $STAGE -ge $CHK_STAGE && ! -f $CHK_FILE ]]; then
-      echo $CHK_FILE >> $MISSFILE
+    local CHK_TIDY=$(echo $LINE | cut -d ',' -f 2)
+    local CHK_FILE=$(echo $LINE | cut -d ',' -f 3)
+    if [[ ! $ASHS_TIDY || $CHK_TIDY -eq 1 ]]; then
+      if [[ $STAGE -ge $CHK_STAGE && ! -f $CHK_FILE ]]; then
+        echo $CHK_FILE >> $MISSFILE
+      fi
     fi
   done
 
