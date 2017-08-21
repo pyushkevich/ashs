@@ -346,23 +346,23 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     # code in ANTS. For this, we got to copy all the atlases to a common directory
     ashs_atlas_build_template;;
 
-    2)
+    3)
     # Resample atlas to template
     ashs_atlas_resample_tse_to_template;;
 
-    3)
+    4)
     # Perform pairwise registration between all atlases
     ashs_atlas_register_to_rest;;
 
-    4)
+    5)
     # Train error correction
     ashs_atlas_adaboost_train;;
 
-    5)
+    6)
     # Organize everything into an atlas that can be used with the main ASHS script
     ashs_atlas_organize_final;;
 
-    6)
+    7)
     # Final cross-validation
     ashs_atlas_organize_xval;;
 
