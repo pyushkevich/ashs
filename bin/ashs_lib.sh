@@ -424,6 +424,8 @@ function ashs_align_t1t2()
       local INIT_RIGID
       if [[ $ASHS_INPUT_T2T1_MAT ]]; then
         INIT_RIGID="-ia $ASHS_INPUT_T2T1_MAT"
+      else
+        INIT_RIGID="-ia-identity"
       fi
 
       # Use greedy affine mode to perform registration 
@@ -1884,7 +1886,7 @@ function ashs_check_train()
 
   for id in ${ATLAS_ID[*]}; do
 
-    if [[ $STAGE -ge 0 ]]; then
+    if [[ $STAGE -ge 1 ]]; then
       for image in tse.nii.gz mprage.nii.gz flirt_t2_to_t1/flirt_t2_to_t1.mat \
                    seg_left.nii.gz seg_right.nii.gz
       do
@@ -1895,7 +1897,7 @@ function ashs_check_train()
       done
     fi
 
-    if [[ $STAGE -ge 1 ]]; then
+    if [[ $STAGE -ge 2 ]]; then
 
       for checkfile in \
         template_build/atlas_${id}_to_template_warp.nii.gz \
@@ -1908,7 +1910,7 @@ function ashs_check_train()
       done
     fi
 
-    if [[ $STAGE -ge 2 ]]; then
+    if [[ $STAGE -ge 3 ]]; then
       for side in $SIDES; do
         for kind in \
           tse_native_chunk_${side} mprage_to_chunktemp_${side} \
@@ -1923,7 +1925,7 @@ function ashs_check_train()
       done
     fi
 
-    if [[ $STAGE -ge 3 ]]; then
+    if [[ $STAGE -ge 4 ]]; then
       for side in $SIDES; do
         missing=0
         for tid in ${ATLAS_ID[*]}; do
@@ -1966,7 +1968,7 @@ function ashs_check_train()
   done
 
   # Loop over the cross-validation experiments
-  if [[ $STAGE -ge 4 ]]; then
+  if [[ $STAGE -ge 5 ]]; then
 
     for ((i=0; i<=$NXVAL; i++)); do
       for side in $SIDES; do

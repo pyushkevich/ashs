@@ -137,7 +137,7 @@ fi
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:NdhVQP" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:NdhVQP" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
