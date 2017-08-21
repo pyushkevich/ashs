@@ -134,7 +134,7 @@ greedy -d 3 -rm $SUBJ_MPRAGE $WANT/reslice_mprage_to_template.nii.gz \
 
 # Apply the transformation to the T2 image 
 greedy -d 3 -rm $SUBJ_TSE $WANT/reslice_tse_to_template.nii.gz \
-  -rf $TEMP_T1_FULL -r $SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_MAT
+  -rf $TEMP_T1_FULL -r $SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT
 
 # Transform all of the images into the chunk template space
 ashs_reslice_to_template $ASHS_WORK $ASHS_ATLAS

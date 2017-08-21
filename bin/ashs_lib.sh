@@ -373,8 +373,8 @@ function ashs_atlas_side_vars()
   ATLAS_T1TEMP_INVTRAN="$ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
 
   # Composite transformations from T2 and template
-  ATLAS_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_MAT"
-  ATLAS_T2TEMP_INVTRAN="$ATLAS_AFF_T2T1_INVMAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
+  ATLAS_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_INVMAT"
+  ATLAS_T2TEMP_INVTRAN="$ATLAS_AFF_T2T1_MAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
 
   # Template chunk pieces
   ATLAS_SIDE_TSE_TO_CHUNKTEMP=$TDIR/tse_to_chunktemp_${side}.nii.gz
@@ -2106,7 +2106,7 @@ function ashs_segmentation_qc()
     $SEG -swapdim RSA -trim 40x40x0mm -resample-iso min -as SS \
     -int 1 $REFSPACE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity -as T2R \
     -slice z ${SLICESPEC} -oo $TMPDIR/cor_tse_%02d.png -clear \
-    -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity \
+    -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-matrix $SUBJ_AFF_T2T1_MAT \
     -slice z ${SLICESPEC} -oo $TMPDIR/cor_mprage_%02d.png -clear \
     -push T2R -push SS -oli $LABELFILE 0.5 \
     -slice-all z ${SLICESPEC} -oomc 3 $TMPDIR/cor_seg_%02d.png 
@@ -2118,7 +2118,7 @@ function ashs_segmentation_qc()
     $SEG -swapdim ASR -trim 40x40x0mm -resample-iso min -as SS \
     -int 1 $REFSPACE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity -as T2R \
     -slice z ${SLICESPEC} -oo $TMPDIR/sag_tse_%02d.png -clear \
-    -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity \
+    -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-matrix $SUBJ_AFF_T2T1_MAT \
     -slice z ${SLICESPEC} -oo $TMPDIR/sag_mprage_%02d.png -clear \
     -push T2R -push SS -oli $LABELFILE 0.5 \
     -slice-all z ${SLICESPEC} -oomc 3 $TMPDIR/sag_seg_%02d.png 
