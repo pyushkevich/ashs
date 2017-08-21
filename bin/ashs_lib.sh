@@ -412,10 +412,6 @@ function ashs_align_t1t2()
       -region ${ASHS_TSE_ISO_REGION_CROP?} \
 			-type short -o $TMPDIR/tse_iso.nii.gz
 
-    # Reslice T1 into space of T2 chunk
-    c3d $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
-      -reslice-identity -type short -o $TMPDIR/mprage_to_tse_iso.nii.gz
-
     # If there is a user-supplied matrix the use it
     if [[ $ASHS_INPUT_T2T1_MAT && $ASHS_INPUT_T2T1_MODE -eq 1 ]]; then
 
@@ -432,7 +428,7 @@ function ashs_align_t1t2()
 
       # Use greedy affine mode to perform registration 
       greedy -d 3 -a -dof 6 -m MI -n 100x100x10 \
-        -i $TMPDIR/tse_iso.nii.gz $TMPDIR/mprage_to_tse_iso.nii.gz \
+        -i $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
         ${INIT_RIGID} \
         -o $SUBJ_AFF_T2T1_MAT 
 
