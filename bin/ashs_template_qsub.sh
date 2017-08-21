@@ -86,8 +86,8 @@ else
   # will actually prevent affine from doing insane scaling
   time greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
-    -o $WAFF/greedy_t1_to_template_init_rigid.mat -ia-id -n 400x0x0x0 \
-    -search 400 0 5
+    -o $WAFF/greedy_t1_to_template_init_rigid.mat -n 400x0x0x0 \
+    -ia-image-centers -search 400 5 5
     
   # Use greedy
   time greedy -d 3 -a -m NCC 2x2x2 \
