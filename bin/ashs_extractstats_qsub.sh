@@ -65,33 +65,31 @@ for segtype in raw heur corr_usegray; do
     SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
     if [[ -f $SBC ]]; then
 
-      # Get voxel volume
-      VVOX=$(voxel_size $SBC)
+      # Generate the voxel and extent statistics
+      STATS=$TMPDIR/rawvols_${segtype}_${side}.txt
+      c3d $SBC -dup -lstat | tee $STATS
 
       # Create an output file
       FNBODYVOL=$WSTAT/${ASHS_SUBJID}_${side}_${segtype}_volumes.txt 
       rm -rf $FNBODYVOL
 
       # Dump volumes into that file
-      SUB=("bkg" "CA1" "CA2" "DG" "CA3" "HEAD" "TAIL" "misc" "SUB" "ERC" "PHG")
       for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
 
         # The id of the label
         i=${LABIDS[ilab]};
         SUB=${LABNAMES[ilab]};
 
-        # Get the number of slices in this subfield 
-        NBODY=$(c3d $SBC -thresh $i $i 1 0 -trim 0mm -info \
-          | grep 'dim = ' | cut -f 1 -d ';' | awk '{print $7;}' | sed -e "s/]//")
+        # Get the extent along z axis
+        NBODY=$(cat $STATS | awk -v id=$i '$1 == id {print $10}')
 
         # Get the volume of this subfield
-        VOLUME=$(c3d $SBC -thresh $i $i 1 0 -voxel-sum | awk {'print $3'})
-
-        # Get the volume of this subfield
-        VSUB=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
+        VSUB=$(cat $STATS | awk -v id=$i '$1 == id {print $7}')
 
         # Write the volume information to output file
-        echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
+        if [[ $NBODY ]]; then
+          echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
+        fi
 
       done
 
