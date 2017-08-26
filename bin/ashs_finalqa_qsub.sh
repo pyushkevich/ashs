@@ -26,6 +26,9 @@
 
 set -x -e
 
+# Library
+source ${ASHS_ROOT?}/bin/ashs_lib.sh
+
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_voting_qsub.sh

@@ -69,7 +69,7 @@ if [[ $ASHS_TSE -nt $SUBJ_TSE ]]; then
 fi
 
 # --- RIGID ALIGNMENT T1/T2 ---
-ashs_align_t1t2 $ASHS_WORK $WFSL
+ashs_align_t1t2 $ASHS_WORK $ASHS_INPUT_T2T1_MAT $ASHS_INPUT_T2T1_MODE
 
 # Report some progress
 job_progress 0.25

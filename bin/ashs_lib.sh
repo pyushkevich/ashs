@@ -387,13 +387,14 @@ function ashs_atlas_side_vars()
 }
 
 
-# This function aligns the T1 and T2 images together. It takes two parameters: the 
-# path to a directory containing images mprage.niigz and tse.nii.gz, and a path to 
-# the directory where the output of the registration is stored.
+# This function aligns the T1 and T2 images together. The required parameter is the path
+# to the T1 and T2 images. Override T2->T1 matrix and mode (0: hint, 1: force) can be
+# supplied as optional arguments
 function ashs_align_t1t2()
 {
   local ASHS_WORK=${1?}
-  local WFSL=${2?}
+  local OVERRIDE_MAT=${2}
+  local OVERRIDE_MODE=${3}
 
   # Load the subject variables
   ashs_subj_vars $ASHS_WORK
@@ -413,17 +414,17 @@ function ashs_align_t1t2()
 			-type short -o $TMPDIR/tse_iso.nii.gz
 
     # If there is a user-supplied matrix the use it
-    if [[ $ASHS_INPUT_T2T1_MAT && $ASHS_INPUT_T2T1_MODE -eq 1 ]]; then
+    if [[ $OVERRIDE_MAT && $OVERRIDE_MODE -eq 1 ]]; then
 
       # Just use the matrix provided by the user
-      c3d_affine_tool $ASHS_INPUT_T2T1_MAT -o $SUBJ_AFF_T2T1_MAT
+      c3d_affine_tool $OVERRIDE_MAT -o $SUBJ_AFF_T2T1_MAT
 
     else
 
       # Provide the initial rigid to Greedy
       local INIT_RIGID
-      if [[ $ASHS_INPUT_T2T1_MAT ]]; then
-        INIT_RIGID="-ia $ASHS_INPUT_T2T1_MAT"
+      if [[ $OVERRIDE_MAT ]]; then
+        INIT_RIGID="-ia $OVERRIDE_MAT"
       else
         INIT_RIGID="-ia-identity"
       fi
@@ -1333,16 +1334,18 @@ function ashs_atlas_organize_xval()
       local MYATL=$ASHS_WORK/atlas/$testid/
 
       # Populate the critical results to avoid having to run registrations twice
-      mkdir -p $XVSUBJ/affine_t1_to_template
-      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempAffine.txt $XVSUBJ/affine_t1_to_template/t1_to_template_ITK.txt
+      
+      mkdir -p $XVSUBJ/affine_t1_to_template $XVSUBJ/ants_t1_to_temp $XVSUBJ/flirt_t2_to_t1
 
-      mkdir -p $XVSUBJ/ants_t1_to_temp
-      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempAffine.txt $XVSUBJ/ants_t1_to_temp/ants_t1_to_tempAffine.txt
-      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz $XVSUBJ/ants_t1_to_temp/ants_t1_to_tempWarp.nii.gz
-      ln -sf $MYATL/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz $XVSUBJ/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz
-
-      mkdir -p $XVSUBJ/flirt_t2_to_t1
-      ln -sf $MYATL/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt $XVSUBJ/flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt
+      for fn in affine_t1_to_template/t1_to_template_affine.mat \
+        affine_t1_to_template/t1_to_template_affine_inv.mat \
+        ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz \
+        ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz \
+        flirt_t2_to_t1/flirt_t2_to_t1.mat \
+        flirt_t2_to_t1/flirt_t2_to_t1_inv.mat
+      do
+        ln -sf $MYATL/$fn $XVSUBJ/$fn
+      done  
 
       # We can also reuse the atlas-to-target stuff
       myidx=0
@@ -1756,7 +1759,7 @@ function ashs_check_main()
       error "Validity check at end of stage $STAGE detected missing files. \
       ($FIRST_MISSING and $((N_MISSING-1)) other files)."
 
-    return -1
+    return 255
 
   else
 

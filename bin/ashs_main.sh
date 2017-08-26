@@ -123,7 +123,7 @@ function dereflink ()
       echo $1
     fi
   else
-    readlink -f $1
+    readlink -m $1
   fi
 }
 
@@ -189,7 +189,8 @@ fi
 mkdir -p ${ASHS_WORK?}
 ASHS_WORK=$(cd $ASHS_WORK; pwd)
 if [[ ! -d $ASHS_WORK ]]; then 
-  echo "Work directory $ASHS_WORK does not exist";
+  echo "Work directory $ASHS_WORK cannot be created"
+  exit -2
 fi
 
 # Redirect output/error to a log file in the dump directory
@@ -197,6 +198,14 @@ LOCAL_LOG=$(date +ashs_main.o%Y%m%d_%H%M%S)
 mkdir -p $ASHS_WORK/dump
 exec > >(tee -i $ASHS_WORK/dump/$LOCAL_LOG)
 exec 2>&1
+
+# Write into the log the arguments and environment
+echo "ashs_main execution log"
+echo "  timestamp:   $(date)"
+echo "  invocation:  $0 $@"
+echo "  directory:   $PWD"
+echo "  environment:"
+set | grep "^ASHS_" | sed 's/^/    /'
 
 # Handle the hook scripts
 if [[ $ASHS_USE_CUSTOM_HOOKS ]]; then

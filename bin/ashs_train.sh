@@ -51,6 +51,9 @@ function usage()
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
+		  -m file           Specify transforms between T1 and T2 scans for some atlases. This is useful when
+		                    registration between the T1 and T2 images fails during training. See "transform
+		                    specification file" below.
 		  -V                Display version information and exit
 
 		stages:
@@ -103,7 +106,19 @@ function usage()
 		  See the Yushkevich et al., 2010 Neuroimage paper for the heuristic rules applied there.
 		  The format of the heuristic file can be found in the help for the subfield_slice_rules
 		  program.
-
+		  
+		transform specification file (-m option):
+		  The file consists of lines in the format:
+		
+		    ID TRANSFORM FORCE
+		
+		  where ID matches the IDs in the manifest, TRANSFORM is a linear transform between
+		  the T2 image and the T1 image (Convert3D/ITK-SNAP format) and FORCE is a flag with
+		  0 meaning that the transform should be used as the starting point for automatic
+		  T2/T1 registration and 1 meaning that the TRANSFORM should be used in place of 
+		  automatic T2/T1 registration. Specify this only for subjects where automatic T2/T1
+		  registration fails.
+		
 		SGE Options:
 		  You can have detailed control over SGE options by passing a custom shell script to the -z
 		  option. ASHS will call this shell script with the working directory as the first parameter
@@ -123,7 +138,7 @@ function dereflink ()
       echo $1
     fi
   else
-    readlink -f $1
+    readlink -m $1
   fi
 }
 
@@ -137,7 +152,7 @@ fi
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:z:NdhVQP" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:m:NdhVQP" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
@@ -152,6 +167,7 @@ while getopts "C:D:L:w:s:x:q:r:z:NdhVQP" opt; do
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
     x) ASHS_XVAL=$(dereflink $OPTARG);;
+    m) ASHS_TRAIN_TRANSFORM_MANIFEST=$(dereflink OPTARG);;
     d) set -x -e;;
     h) usage; exit 0;;
     V) ASHS_SPECIAL_ACTION=vers;;
@@ -183,6 +199,14 @@ mkdir -p $ASHS_WORK/dump
 exec > >(tee -i $ASHS_WORK/dump/$LOCAL_LOG)
 exec 2>&1
 
+# Write into the log the arguments and environment
+echo "ashs_train execution log"
+echo "  timestamp:   $(date)"
+echo "  invocation:  $0 $@"
+echo "  directory:   $PWD"
+echo "  environment:"
+set | grep "^ASHS_" | sed 's/^/    /'
+
 # Set the config file
 if [[ ! $ASHS_CONFIG ]]; then
   ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
@@ -205,7 +229,12 @@ fi
 
 if [[ ! -f $ASHS_LABELFILE ]]; then
   echo "Missing label description file (-L)"
-  exit -1;
+  exit 1;
+fi
+
+if [[ $ASHS_TRAIN_TRANSFORM_MANIFEST && ! -f  $ASHS_TRAIN_TRANSFORM_MANIFEST ]]; then
+  echo "Missing transform override file (-m)"
+  exit 1;
 fi
 
 # Check that parallel and qsub are not both on
@@ -228,14 +257,35 @@ SIDES="$ASHS_SIDES"
 # Get the number of atlases
 N=${#ATLAS_ID[*]}
 
+# Create list of transform overrides
+declare -a ATLAS_T2T1_MAT ATLAS_T2T1_MODE
+
 # Check that all the input files exist
 for ((i=0; i < $N; i++)); do
+
+  # Check for manifest components
   if [[ -f ${ATLAS_T1[i]} && -f ${ATLAS_T2[i]} && -f ${ATLAS_LS[$i]} && -f ${ATLAS_RS[$i]} ]]; then
     echo Verified atlas ${ATLAS_ID[i]}
   else
     echo Bad specification for atlas \"${ATLAS_ID[i]}\"
     exit 1
   fi
+
+  # Check for transform overrides
+  if [[ $ASHS_TRAIN_TRANSFORM_MANIFEST ]]; then
+
+    ATLAS_T2T1_MAT[i]=$(cat $ASHS_TRAIN_TRANSFORM_MANIFEST \
+      | awk -v id=${ATLAS_ID[i]} '$1==id {print $2}')
+
+    ATLAS_T2T1_MODE[i]=$(cat $ASHS_TRAIN_TRANSFORM_MANIFEST \
+      | awk -v id=${ATLAS_ID[i]} '$1==id {print $3}')
+
+    if [[ ${ATLAS_T2T1_MAT[i]} && ! -f ${ATLAS_T2T1_MAT[i]} ]]; then
+      echo Bad transform specification ${ATLAS_T2T1_MAT[i]} for atlas \"${ATLAS_ID[i]}\"
+      exit 1
+    fi
+  fi
+
 done
 
 # Check the heuristic file
@@ -276,7 +326,7 @@ fi
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS
-export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST
+export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
 export SIDES
 
 # Set the start and end stages

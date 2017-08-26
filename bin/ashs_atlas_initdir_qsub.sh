@@ -63,5 +63,9 @@ else
     -push MPR -smooth-fast 4vox -resample 12.5% -o $MYWORK/mprage_lr.nii.gz
 fi
 
+# Check if the is an override for the affine matrix
+OVERRIDE_MAT=$(cat $ASHS_TRAIN_TRANSFORM_MANIFEST | awk -v id=$id '$1==id {print $2}')
+OVERRIDE_MODE=$(cat $ASHS_TRAIN_TRANSFORM_MANIFEST | awk -v id=$id '$1==id {print $3}')
+
 # Peform registration between the two modalities
-ashs_align_t1t2 $MYWORK $WFSL
+ashs_align_t1t2 $MYWORK $OVERRIDE_MAT $OVERRIDE_MODE
