@@ -59,10 +59,15 @@ LABIDS=($(cat $TMPDIR/labels.txt | awk '{print $1}'))
 LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
 
 # Names of segmentations
-for segtype in raw heur corr_usegray; do
+for segtype in raw heur corr_usegray manual; do
   for side in $SIDES; do
 
-    SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
+    if [[ $segtype == "manual" ]]; then
+      SBC=$ASHS_WORK/refseg/refseg_${side}.nii.gz
+    else
+      SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
+    fi
+
     if [[ -f $SBC ]]; then
 
       # Generate the voxel and extent statistics
@@ -92,6 +97,36 @@ for segtype in raw heur corr_usegray; do
         fi
 
       done
+
+      # If there is a reference segmentation, generate overlap statistics
+      REFSEG=$ASHS_WORK/refseg/refseg_${side}.nii.gz
+      if [[ -f $REFSEG && $segtype != "manual" ]]; then
+
+        # Get the overlap statistics
+        OVLFILE=$TMPDIR/ovl_${segtype}_${side}.txt
+        c3d $REFSEG -int 0 -dup $SBC -reslice-identity -label-overlap > $OVLFILE
+
+        # Extract the statistics for each label
+        OUTOVL=$WSTAT/${ASHS_SUBJID}_${side}_${segtype}_overlap.txt
+        rm -rf $OUTOVL
+
+        # Dump volumes into that file
+        for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
+
+          # The id of the label
+          i=${LABIDS[ilab]};
+          SUB=${LABNAMES[ilab]};
+
+          # Extract the overlap
+          OVL=$(cat $OVLFILE | awk -v k=$i '$1==k && NR>4 {print $4}')
+
+          if [[ $OVL ]]; then
+            echo $ASHS_SUBJID $side $SUB $OVL >> $OUTOVL
+          fi
+
+        done
+
+      fi
 
     fi
   done

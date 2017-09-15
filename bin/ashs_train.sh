@@ -54,6 +54,8 @@ function usage()
 		  -m file           Specify transforms between T1 and T2 scans for some atlases. This is useful when
 		                    registration between the T1 and T2 images fails during training. See "transform
 		                    specification file" below.
+		  -S integer        Specify stage(s) for cross-validation. Only useful if you need to rerun the 
+		                    cross-validation and want to run just a subset of stages. For developers mostly.
 		  -V                Display version information and exit
 
 		stages:
@@ -152,13 +154,14 @@ fi
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:z:m:NdhVQP" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:m:S:NdhVQP" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
     L) ASHS_LABELFILE=$(dereflink $OPTARG);;
     w) ASHS_WORK=$OPTARG;;
     s) STAGE_SPEC=$OPTARG;;
+    S) XVAL_STAGE_SPEC=$OPTARG;;
     N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
@@ -327,7 +330,7 @@ fi
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
-export SIDES
+export SIDES XVAL_STAGE_SPEC
 
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then

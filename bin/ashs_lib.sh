@@ -1296,7 +1296,7 @@ function ashs_atlas_organize_xval()
     mkdir -p $XVATLAS
 
     # Create links to stuff from the main atlas
-    for fn in $(ls $ASHS_WORK/final | grep -v "\(adaboost\|train\)"); do
+    for fn in $(ls $ASHS_WORK/final | grep -v "\(adaboost\|train\|atlas_vars\)"); do
       ln -sf $ASHS_WORK/final/$fn $XVATLAS/$fn
     done
 
@@ -1315,6 +1315,10 @@ function ashs_atlas_organize_xval()
       # Increment the index
       myidx=$((myidx+1))
     done
+
+    # The ashs_atlas_vars script must have the right number of atlases
+    cat $ASHS_WORK/final/ashs_atlas_vars.sh | sed -e "s/ASHS_ATLAS_N=.*$/ASHS_ATLAS_N=${myidx}/" \
+      > $XVATLAS/ashs_atlas_vars.sh
 
     # For the adaboost directory, link the corresponding cross-validation experiment
     mkdir -p $XVATLAS/adaboost
@@ -1364,11 +1368,18 @@ function ashs_atlas_organize_xval()
         myidx=$((myidx+1))
       done
 
+      # Do we want to run a substage for cross-validation
+      local STGCMD=""
+      if [[ $XVAL_STAGE_SPEC ]]; then
+        STGCMD="-s $XVAL_STAGE_SPEC"
+      fi
+
       # Now, we can launch the ashs_main segmentation for this subject!
       qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${IDFULL}" \
         $ASHS_ROOT/bin/ashs_main.sh \
           -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
-          -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz"
+          -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz" \
+          $STGCMD
 
     done
 

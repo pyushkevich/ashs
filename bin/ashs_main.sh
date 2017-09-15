@@ -237,7 +237,7 @@ fi
 
 # Set the config file (from atlas if possible)
 if [[ ! $ASHS_CONFIG ]]; then
-  if [[ -f $ASHS_CONFIG/ashs_user_config.sh ]]; then
+  if [[ -f $ATLAS/ashs_user_config.sh ]]; then
     ASHS_CONFIG=$ATLAS/ashs_user_config.sh
   else
     ASHS_CONFIG=$ASHS_ROOT/bin/ashs_config.sh
