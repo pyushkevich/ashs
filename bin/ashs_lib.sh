@@ -2091,6 +2091,10 @@ function ashs_registration_qc()
   mkdir -p $ASHS_WORK/qa
   montage -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
     $ASHS_WORK/qa/qa_registration_${side}_qa.png
+
+  # Call hook script with the result as an attachment
+  bash $ASHS_HOOK_SCRIPT \
+    attach "Registration QC ($side)" $ASHS_WORK/qa/qa_registration_${side}_qa.png
 }
 
 
@@ -2160,4 +2164,9 @@ function ashs_segmentation_qc()
   mkdir -p $ASHS_WORK/qa
   montage -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
     $ASHS_WORK/qa/qa_seg_${malfmode}_${corrmode}_${side}_qa.png
+
+
+  # Call hook script with the result as an attachment
+  bash $ASHS_HOOK_SCRIPT \
+    attach "Segmentation QC ($side,${malfmode}_${corrmode})" $ASHS_WORK/qa/qa_seg_${malfmode}_${corrmode}_${side}_qa.png
 }
