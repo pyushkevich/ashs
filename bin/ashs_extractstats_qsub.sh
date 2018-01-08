@@ -59,7 +59,7 @@ LABIDS=($(cat $TMPDIR/labels.txt | awk '{print $1}'))
 LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
 
 # Names of segmentations
-for segtype in raw heur corr_usegray manual; do
+for segtype in raw heur corr_usegray corr_nogray manual; do
   for side in $SIDES; do
 
     if [[ $segtype == "manual" ]]; then
