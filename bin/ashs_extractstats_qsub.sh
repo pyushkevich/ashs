@@ -45,6 +45,13 @@ function voxel_size()
 }
 
 # directory for the subfields (separate for different parameter values)
+if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+  WSUB=$ASHS_WORK/bootstrap/fusion
+else
+  WSUB=$ASHS_WORK/multiatlas/fusion
+fi
+
+# Final statistics output directory
 WSTAT=$ASHS_WORK/final
 mkdir -p $WSTAT
 
@@ -65,7 +72,7 @@ for segtype in raw heur corr_usegray corr_nogray manual; do
     if [[ $segtype == "manual" ]]; then
       SBC=$ASHS_WORK/refseg/refseg_${side}.nii.gz
     else
-      SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
+      SBC=$WSUB/lfseg_${segtype}_${side}.nii.gz
     fi
 
     if [[ -f $SBC ]]; then

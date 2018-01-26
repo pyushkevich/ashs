@@ -85,8 +85,9 @@ function usage()
 		                    script. For an example script with comments, see ashs_default_hook.sh
 		                    The purpose of the hook is to allow intermediary systems (e.g. XNAT) 
 		                    to monitor ASHS performance. An optional ASHS_HOOK_DATA variable can be set
+		  -B                Do not perform the bootstrapping step, and use the output of the initial joint
+		                    label fusion (in multiatlas directory) as the final output.
 		                    and will be forwarded to the script
-
 		Stages:
 		  1:                fit to population template
 		  2:                multi-atlas registration
@@ -167,6 +168,7 @@ while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPM" opt; do
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
     m) ASHS_INPUT_T2T1_MAT=$OPTARG;;
     M) ASHS_INPUT_T2T1_MODE=1;;
+    B) ASHS_NO_BOOTSTRAP=1;;
     d) set -x -e;;
     h) usage; exit 0;;
     V) ASHS_SPECIAL_ACTION=vers;;
@@ -393,6 +395,7 @@ export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFI
 export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
+export ASHS_NO_BOOTSTRAP
 
 # List of training atlases 
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)

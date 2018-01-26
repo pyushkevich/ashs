@@ -38,7 +38,11 @@ cat <<-BLOCK1
 BLOCK1
 
 # directory for the subfields (separate for different parameter values)
-WSUB=$ASHS_WORK/bootstrap/fusion
+if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+  WSUB=$ASHS_WORK/bootstrap/fusion
+else
+  WSUB=$ASHS_WORK/multiatlas/fusion
+fi
 
 # Directory for QA output
 WQA=$ASHS_WORK/qa
