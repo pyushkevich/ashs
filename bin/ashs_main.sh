@@ -148,7 +148,7 @@ unset ASHS_USE_CUSTOM_HOOKS
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPM" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPMB" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;

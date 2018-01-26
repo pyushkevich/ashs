@@ -1712,13 +1712,18 @@ function ashs_check_main()
       3,1,$MADIR/fusion/lfseg_heur_${side}.nii.gz
       3,1,$MADIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
       3,1,$MADIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
-      5,1,$BSDIR/fusion/lfseg_heur_${side}.nii.gz
-      5,1,$BSDIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
-      5,1,$BSDIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
       6,1,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_heur.nii.gz
       6,1,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_usegray.nii.gz
       6,1,$ASHS_WORK/final/${ASHS_SUBJID}_${side}_lfseg_corr_nogray.nii.gz
 			HEREDOC_CHECK_BYSIDE
+
+    if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+      cat >> $LISTFILE <<-HEREDOC_CHECK_BYSIDE_BS
+        5,1,$BSDIR/fusion/lfseg_heur_${side}.nii.gz
+        5,1,$BSDIR/fusion/lfseg_corr_usegray_${side}.nii.gz 
+        5,1,$BSDIR/fusion/lfseg_corr_nogray_${side}.nii.gz 
+				HEREDOC_CHECK_BYSIDE_BS
+    fi
 
     for tid in ${TRIDS}; do
 
@@ -1731,13 +1736,17 @@ function ashs_check_main()
         2,0,$MADIR/$TDIR/greedy_atlas_to_subj_warp.nii.gz
         2,1,$MADIR/$TDIR/atlas_to_native.nii.gz
         2,1,$MADIR/$TDIR/atlas_to_native_segvote.nii.gz
-        4,1,$BSDIR/$TDIR/sqrt_fwd.mat
-        4,1,$BSDIR/$TDIR/sqrt_inv.mat
-        4,0,$BSDIR/$TDIR/greedy_warp.nii.gz
-        4,1,$BSDIR/$TDIR/atlas_to_native.nii.gz
-        4,1,$BSDIR/$TDIR/atlas_to_native_segvote.nii.gz
 				HEREDOC_CHECK_BY_ATLAS_SIDE
       
+      if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+        cat >> $LISTFILE <<-HEREDOC_CHECK_BY_ATLAS_SIDE_BS
+          4,1,$BSDIR/$TDIR/sqrt_fwd.mat
+          4,1,$BSDIR/$TDIR/sqrt_inv.mat
+          4,0,$BSDIR/$TDIR/greedy_warp.nii.gz
+          4,1,$BSDIR/$TDIR/atlas_to_native.nii.gz
+          4,1,$BSDIR/$TDIR/atlas_to_native_segvote.nii.gz
+					HEREDOC_CHECK_BY_ATLAS_SIDE_BS
+      fi
     done
 
   done
