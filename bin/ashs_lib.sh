@@ -44,7 +44,12 @@ source ${ASHS_CONFIG?}
 
 # Limit the number of threads to one if using QSUB
 if [[ $ASHS_USE_QSUB ]]; then
-  export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+  if [[ $NSLOTS ]]; then
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$NSLOTS
+  else
+    export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
+  fi
+  echo "ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=${ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS}"
 fi
 
 # Determine the TMDDIR parameter for the child scripts
