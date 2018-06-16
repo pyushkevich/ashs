@@ -311,6 +311,7 @@ function ashs_ants_pairwise()
 
     # Create a composite warp from atlas to target image (temporary)
     #/usr/bin/time -f "ComposeMultiTransform: walltime=%E, memory=%M" \
+    time \
       ComposeMultiTransform 3 \
         $TMPDIR/fullWarp.nii \
         -R tse_native_chunk_${side}.nii.gz \
@@ -323,6 +324,7 @@ function ashs_ants_pairwise()
 
     # Apply the composite warp to the tse image
     #/usr/bin/time -f "Warp TSE: walltime=%E, memory=%M" \
+    time \
       WarpImageMultiTransform 3 $ATLAS_TSE \
         $WREG/atlas_to_native.nii.gz \
         $TMPDIR/fullWarp.nii
@@ -337,6 +339,7 @@ function ashs_ants_pairwise()
       c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth $ASHS_LABEL_SMOOTHING -o $TMPDIR/label_${LID}.nii.gz
 
       #/usr/bin/time -f "Warp label ${LID}: walltime=%E, memory=%M" \
+      time \
         WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
           $TMPDIR/label_${LID}_warp.nii.gz \
           $TMPDIR/fullWarp.nii
@@ -474,6 +477,7 @@ BLOCK1
 
   # Run the label fusion program
   #/usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
+  time \
     label_fusion 3 -g $ATLASES -l $ATLSEGS \
       -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
       $EXCLCMD \
@@ -1010,6 +1014,7 @@ function ashs_bl_train_qsub()
 
       # Now run for real
       #/usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
+      time \
         bl truthlist.txt autolist.txt $label \
           $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_${mode} \
             $GRAYLIST -p $POSTLIST
