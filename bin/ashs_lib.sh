@@ -655,7 +655,7 @@ BLOCK1
   # Run the label fusion program
   # note: the raw posteriors command here is for compatibility with old atlases
   # in which posteriors are not normalized to [0 1] range
-  /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
+  #/usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
     label_fusion 3 -g $ATLASES -l $ATLSEGS \
       -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
       -pd $ASHS_MALF_PADDING \
@@ -1506,7 +1506,7 @@ function ashs_xval_loo()
     # Run the label fusion program
     # note: the raw posteriors command here is for compatibility with old atlases
     # in which posteriors are not normalized to [0 1] range
-    /usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
+    #/usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
       label_fusion 3 -g $ATLASES -l $ATLSEGS \
         -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
         -pd $ASHS_MALF_PADDING \
@@ -1600,7 +1600,7 @@ function ashs_xval_bl()
     local FRAC=$(echo 0 | awk "{ k=$NSAM / ($ASHS_EC_TARGET_SAMPLES * $DRYFRAC); p=(k==int(k) ? k : 1 + int(k)); print p < 1 ? 1 : 1 / p }")
 
     # Now run for real
-    /usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
+    #/usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
       bl $LDIR/truthlist.txt $LDIR/autolist.txt $label \
         $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS $WTRAIN/adaboost_${mode} \
           $GRAYLIST -p $LDIR/postlist.txt
