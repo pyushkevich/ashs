@@ -43,6 +43,21 @@
 # in the manifest file
 ASHS_SIDES="left right"
 
+# -------------------------------------
+# ASHS preprocessing parameters
+# -------------------------------------
+#
+# ASHS provide options for non-local mean denoising and super resolution
+# upsampling (code provided by Dr. Jose Manjón http://personales.upv.es/jmanjon/).
+# Currently, the non-local mean upsampling only support postive interger upsample factors.
+# Upsample factors are specified in "lef-right (LR), anterior-posterior (AP), and superior-inferior (SI)" directions in the physical space rather than in x, y, z coordinates
+ASHS_MPRAGE_DENOISE=0
+ASHS_MPRAGE_SRUPSAMPLE=0
+ASHS_MPRAGE_SRUPSAMPLE_FACTOR="1 1 1"
+ASHS_TSE_DENOISE=0
+ASHS_TSE_SRUPSAMPLE=0
+ASHS_TSE_SRUPSAMPLE_FACTOR="1 1 1"
+
 # ---------------------------------
 # ASHS_TSE resolution-related parameters
 # ---------------------------------

@@ -56,16 +56,102 @@ ashs_subj_vars $ASHS_WORK
 SUBJ_AFF_T1TEMP_RESLICE=$WAFF/t1_to_template_affine.nii.gz
 
 # Copy the images into the working directory
-if [[ $ASHS_MPRAGE -nt $SUBJ_MPRAGE ]]; then
+if [[ $ASHS_MPRAGE -nt $SUBJ_RAWMPRAGE ]]; then
   ### TODO: I took this out because it was messing up CL with old atlases!
   ### c3d $ASHS_MPRAGE -stretch 1% 99% 0 4096 -clip 0 4096 -type short -o $SUBJ_MPRAGE
-  c3d $ASHS_MPRAGE -type short -o $SUBJ_MPRAGE
+  c3d $ASHS_MPRAGE -type short -o $SUBJ_RAWMPRAGE
+
+  # Perform preprocessing - denoising
+  SUBJ_MPRAGE_DENOISE=$ASHS_WORK/mprage_d.nii.gz
+  echo "ASHS_MPRAGE_DENOISE = $ASHS_MPRAGE_DENOISE"
+  if [[ $ASHS_MPRAGE_DENOISE == 1 ]]; then
+    NLMDenoise \
+      -i $SUBJ_RAWMPRAGE \
+      -o $SUBJ_MPRAGE_DENOISE
+  else
+    cp $SUBJ_RAWMPRAGE $SUBJ_MPRAGE_DENOISE
+  fi
+
+  # Perform preprocessing - SR upsample
+  if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 ]]; then
+
+    # get orientation code
+    orient_code=$(c3d $ASHS_MPRAGE -info | cut -d ';' -f 5 | cut -d ' ' -f 5)
+    if [[ $orient_code == "Oblique," ]]; then
+      orient_code=$(c3d $ASHS_MPRAGE -info | cut -d ';' -f 5 | cut -d ' ' -f 8)
+    fi
+
+    # Swap the dimention of the image to RPI
+    c3d $SUBJ_MPRAGE_DENOISE \
+      -clip 0 inf -type short \
+      -swapdim RPI \
+      -o $SUBJ_MPRAGE_DENOISE
+
+    # Perform upsample
+    NLMUpsample \
+      -i $SUBJ_MPRAGE_DENOISE \
+      -o $SUBJ_MPRAGE \
+      -lf $ASHS_MPRAGE_SRUPSAMPLE_FACTOR
+
+    # Swap the dimention back to the original orientation code
+    c3d $SUBJ_MPRAGE -swapdim $orient_code \
+      -o $SUBJ_MPRAGE
+
+  else
+    cp $SUBJ_MPRAGE_DENOISE $SUBJ_MPRAGE
+  fi
+
+  # remove intermediate file
+  rm -f $SUBJ_MPRAGE_DENOISE
+
 fi
 
-if [[ $ASHS_TSE -nt $SUBJ_TSE ]]; then
+if [[ $ASHS_TSE -nt $SUBJ_RAWTSE ]]; then
   ### TODO: I took this out because it was messing up CL with old atlases!
   ### c3d $ASHS_TSE -stretch 1% 99% 0 4096 -clip 0 4096 -type short -o $SUBJ_TSE 
-  c3d $ASHS_TSE -type short -o $SUBJ_TSE 
+  c3d $ASHS_TSE -type short -o $SUBJ_RAWTSE 
+
+  # Perform preprocessing - denoising
+  SUBJ_TSE_DENOISE=$ASHS_WORK/tse_d.nii.gz
+  if [[ $ASHS_TSE_DENOISE == 1 ]]; then
+    NLMDenoise \
+      -i $SUBJ_RAWTSE \
+      -o $SUBJ_TSE_DENOISE
+  else
+    cp $SUBJ_RAWTSE $SUBJ_TSE_DENOISE
+  fi
+
+  # Perform preprocessing - SR upsample
+  if [[ $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+
+    # get orientation code
+    orient_code=$(c3d $ASHS_TSE -info | cut -d ';' -f 5 | cut -d ' ' -f 5)
+    if [[ $orient_code == "Oblique," ]]; then
+      orient_code=$(c3d $ASHS_TSE -info | cut -d ';' -f 5 | cut -d ' ' -f 8)
+    fi
+
+    # Swap the dimention of the image to RPI
+    c3d $SUBJ_TSE_DENOISE -swapdim RPI \
+      -o $SUBJ_TSE_DENOISE
+
+    # Perform upsample
+    NLMUpsample \
+      -i $SUBJ_TSE_DENOISE \
+      -o $SUBJ_TSE \
+      -lf $ASHS_TSE_SRUPSAMPLE_FACTOR
+
+    # Swap the dimention back to the original orientation code
+    c3d $SUBJ_TSE -clip 0 inf -type short -swapdim $orient_code \
+      -o $SUBJ_TSE
+
+  else
+    cp $SUBJ_TSE_DENOISE $SUBJ_TSE
+  fi
+
+  # remove intermediate file
+  rm -f $SUBJ_TSE_DENOISE
+
+
 fi
 
 # --- RIGID ALIGNMENT T1/T2 ---

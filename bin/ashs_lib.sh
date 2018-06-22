@@ -281,6 +281,8 @@ function ashs_subj_vars()
   local WFSL=$WORK/flirt_t2_to_t1
 
   # Main images
+  SUBJ_RAWMPRAGE=$WORK/mprage_raw.nii.gz
+  SUBJ_RAWTSE=$WORK/tse_raw.nii.gz
   SUBJ_MPRAGE=$WORK/mprage.nii.gz
   SUBJ_TSE=$WORK/tse.nii.gz
 
