@@ -401,7 +401,13 @@ export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)
 
 # Lengths of the different stages in terms of relative progress
-STAGE_PPOS=(0.0 0.2 0.5 0.6 0.9 0.95 0.98 1.0)
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  STAGE_PPOS=(0.0 0.5 0.7 0.78 0.87 0.95 0.97 1.0)
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  STAGE_PPOS=(0.0 0.4 0.6 0.72 0.83 0.94 0.96 1.0)
+else
+  STAGE_PPOS=(0.0 0.2 0.5 0.6 0.9 0.95 0.98 1.0)
+fi
 
 # Names of the different stages
 STAGE_NAMES=(\

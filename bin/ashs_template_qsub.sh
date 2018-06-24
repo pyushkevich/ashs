@@ -158,7 +158,14 @@ fi
 ashs_align_t1t2 $ASHS_WORK $ASHS_INPUT_T2T1_MAT $ASHS_INPUT_T2T1_MODE
 
 # Report some progress
-job_progress 0.25
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.8
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.6
+else
+  job_progress 0.25
+fi
+
 
 # Use FLIRT to register T1 to template
 if [[ -f $SUBJ_AFF_T1TEMP_MAT && $ASHS_SKIP_RIGID ]]; then
@@ -194,7 +201,13 @@ else
 fi
 
 # Report some more progress
-job_progress 0.5
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.9
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.8
+else
+  job_progress 0.5
+fi
 
 # Use ANTS to warp the ASHS_MPRAGE image to the template
 if [[ $ASHS_SKIP_ANTS && -f $SUBJ_T1TEMP_WARP ]]; then
@@ -212,7 +225,13 @@ else
 fi
 
 # Report some more progress
-job_progress 0.9
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.98
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.95
+else
+  job_progress 0.9
+fi
 
 # Apply the transformation to the T1 image and to the T1 segmentation
 greedy -d 3 -rm $SUBJ_MPRAGE $WANT/reslice_mprage_to_template.nii.gz \
