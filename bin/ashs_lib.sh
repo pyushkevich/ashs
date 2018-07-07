@@ -1264,12 +1264,13 @@ function ashs_atlas_organize_final()
   # Generate a brain mask for the template
   export FSLOUTPUTTYPE=NIFTI_GZ
   cd $FINAL/template
-  bet2 template.nii.gz template_bet -m -v 
+  bet2 template.nii.gz template_bet -m -v
+  cd $ASHS_WORK 
 }
 
 
 # Organize cross-validation directories for running cross-validation experiments
-function ashs_atlas_organize_xval()
+function ashs_atlas_organize_xval_backup07072018()
 {
   # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
   # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
@@ -1396,6 +1397,171 @@ function ashs_atlas_organize_xval()
   # Wait for it all to be done
   qwait "ashs_xval_*"
 }
+
+# Organize cross-validation directories for running cross-validation experiments using qsubmit_single_array so that GNU parallel can be used
+function ashs_atlas_organize_xval()
+{
+  # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
+  # building. We will do this all in one go to simplify the code. We create BASH arrays for the train/test
+  local NXVAL=0
+  if [[ -f $ASHS_XVAL ]]; then
+    NXVAL=$(cat $ASHS_XVAL | wc -l)
+  fi
+
+  # Arrays for the main training
+  XV_TRAIN[0]=${ATLAS_ID[*]}
+  XV_TEST[0]=""
+  XVID[0]="main"
+
+  # Arrays for the cross-validation training
+  for ((jx=1;jx<=$NXVAL;jx++)); do
+
+    XV_TEST[$jx]=$(cat $ASHS_XVAL | awk "NR==$jx { print \$0 }")
+    XV_TRAIN[$jx]=$(echo $( for((i=0;i<$N;i++)); do echo ${ATLAS_ID[i]}; done | awk "\"{${XV_TEST[$jx]}}\" !~ \$1 {print \$1}"))
+    XVID[$jx]=xval$(printf %04d $jx)
+
+  done
+
+  # Organize the directories
+  IDFULLLIST=""
+  for ((i=1; i<=$NXVAL; i++)); do
+
+    # The x-validation ID
+    local XID=${XVID[i]}
+    local TRAIN=${XV_TRAIN[i]}
+
+    # Create the atlas for this experiment (based on all the training cases for it)
+    local XVATLAS=$ASHS_WORK/xval/${XID}/atlas
+    mkdir -p $XVATLAS
+
+    # Create links to stuff from the main atlas
+    for fn in $(ls $ASHS_WORK/final | grep -v "\(adaboost\|train\|atlas_vars\)"); do
+      ln -sf $ASHS_WORK/final/$fn $XVATLAS/$fn
+    done
+
+    # For the train directory, only choose the atlases that are in the training set
+    mkdir -p $XVATLAS/train
+    local myidx=0
+    for tid in $TRAIN; do
+
+      # Get the index of the training ID among all training subjects
+      local srcdir=$(for qid in ${ATLAS_ID[*]}; do echo $qid; done | awk "\$1==\"$tid\" {printf \"train%03d\n\",NR-1}")
+      local trgdir=$(printf "train%03d" $myidx)
+
+      # Link the two directories
+      ln -sf $ASHS_WORK/final/train/$srcdir $XVATLAS/train/$trgdir
+
+      # Increment the index
+      myidx=$((myidx+1))
+    done
+
+    # The ashs_atlas_vars script must have the right number of atlases
+    cat $ASHS_WORK/final/ashs_atlas_vars.sh | sed -e "s/ASHS_ATLAS_N=.*$/ASHS_ATLAS_N=${myidx}/" \
+      > $XVATLAS/ashs_atlas_vars.sh
+
+    # For the adaboost directory, link the corresponding cross-validation experiment
+    mkdir -p $XVATLAS/adaboost
+    for side in $SIDES; do
+      ln -sf $ASHS_WORK/train/${XID}_${side} $XVATLAS/adaboost/$side
+    done
+
+    # Now, for each test subject, initialize the ASHS directory with links
+    for testid in ${XV_TEST[i]}; do
+
+      # Create the directory for this run
+      local IDFULL=${XID}_test_${testid}
+      local XVSUBJ=$ASHS_WORK/xval/${XID}/test/$IDFULL
+      mkdir -p $XVSUBJ
+
+      # The corresponding atlas directory
+      local MYATL=$ASHS_WORK/atlas/$testid/
+
+      # Populate the critical results to avoid having to run registrations twice
+
+      mkdir -p $XVSUBJ/affine_t1_to_template $XVSUBJ/ants_t1_to_temp $XVSUBJ/flirt_t2_to_t1
+
+      for fn in affine_t1_to_template/t1_to_template_affine.mat \
+        affine_t1_to_template/t1_to_template_affine_inv.mat \
+        ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz \
+        ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz \
+        flirt_t2_to_t1/flirt_t2_to_t1.mat \
+        flirt_t2_to_t1/flirt_t2_to_t1_inv.mat
+      do
+        ln -sf $MYATL/$fn $XVSUBJ/$fn
+      done
+
+      # We can also reuse the atlas-to-target stuff
+      myidx=0
+      for tid in $TRAIN; do
+        for side in $SIDES; do
+
+          local tdir=$XVSUBJ/multiatlas/tseg_${side}_train$(printf %03d $myidx)
+          mkdir -p $tdir
+
+          local sdir=$MYATL/pairwise/tseg_${side}_train${tid}
+
+          for fname in greedy_atlas_to_subj_affine.mat greedy_atlas_to_subj_warp.nii.gz ; do
+            ln -sf $sdir/$fname $tdir/$fname
+          done
+        done
+        myidx=$((myidx+1))
+      done
+
+      # organize a list of IDFULL
+      IDFULLLIST="$IDFULLLIST $IDFULL"
+
+      # Do we want to run a substage for cross-validation
+      #local STGCMD=""
+      #if [[ $XVAL_STAGE_SPEC ]]; then
+      #  STGCMD="-s $XVAL_STAGE_SPEC"
+      #fi
+
+      # Now, we can launch the ashs_main segmentation for this subject!
+      #qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${IDFULL}" \
+      #  $ASHS_ROOT/bin/ashs_main.sh \
+      #    -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
+      #    -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz" \
+      #    $STGCMD
+
+    done
+
+  done
+
+  # submit jobs to run xval
+  qsubmit_single_array "ashs_xval" "${IDFULLLIST[*]}" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_atlas_run_xval
+
+  # Wait for it all to be done
+  #qwait "ashs_xval_*"
+}
+
+function ashs_atlas_run_xval()
+{
+  local IDFULL=${1?}
+
+  # get XID and testid
+  local XID=$(echo $IDFULL | awk -F '_test_' '{print $1}')
+  local testid=$(echo $IDFULL | awk -F '_test_' '{print $2}')
+
+  # specify directories
+  local XVSUBJ=$ASHS_WORK/xval/${XID}/test/$IDFULL
+  local XVATLAS=$ASHS_WORK/xval/${XID}/atlas
+  local MYATL=$ASHS_WORK/atlas/$testid/
+
+  # Do we want to run a substage for cross-validation
+  local STGCMD=""
+  if [[ $XVAL_STAGE_SPEC ]]; then
+    STGCMD="-s $XVAL_STAGE_SPEC"
+  fi
+
+  # Now, we can launch the ashs_main segmentation for this subject!
+  $ASHS_ROOT/bin/ashs_main.sh \
+    -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
+    -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz" \
+    $STGCMD
+}
+
 
 # This function Qsubs the bl command unless the output is already present
 function ashs_check_bl_result()
