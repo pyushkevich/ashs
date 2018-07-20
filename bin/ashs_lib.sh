@@ -175,7 +175,7 @@ function qsubmit_single_array()
 
     export -f gnu_parallel_qsub
     export -f get_tmpdir
-    parallel -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
+    parallel ${ASHS_PARALLEL_OPTS} -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
 
   else
 
@@ -225,7 +225,7 @@ function qsubmit_double_array()
 
     export -f gnu_parallel_qsub
     export -f get_tmpdir
-    parallel -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
+    parallel ${ASHS_PARALLEL_OPTS} -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
 
   else
 

@@ -63,6 +63,7 @@ function usage()
 		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
+                  -p OPTS           Pass in additional options to GNU's parallel. Also enables -P option above..
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
 		                    files should consist of two nifti files in quotation marks:
 
@@ -138,7 +139,7 @@ fi
 unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
 unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
-unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK
+unset ASHS_QSUB_OPTS ASHS_PARALLEL_OPTS ASHS_QSUB_HOOK
 unset ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
 
 # Set the default hook script - which does almost nothing
@@ -148,7 +149,7 @@ unset ASHS_USE_CUSTOM_HOOKS
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPMB" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:z:m:p:HNTdhVQPMB" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;
@@ -162,6 +163,7 @@ while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPMB" opt; do
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
+    p) ASHS_USE_PARALLEL=1; ASHS_PARALLEL_OPTS=$OPTARG;;
     z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     H) ASHS_USE_CUSTOM_HOOKS=1;;
@@ -392,7 +394,7 @@ SIDES="$ASHS_SIDES"
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
-export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
+export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS ASHS_PARALLEL_OPTS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
 export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB

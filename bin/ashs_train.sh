@@ -50,6 +50,7 @@ function usage()
 		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
+                  -p OPTS           Pass in additional options to GNU's parallel. Also enables -P option above..
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		  -m file           Specify transforms between T1 and T2 scans for some atlases. This is useful when
 		                    registration between the T1 and T2 images fails during training. See "transform
@@ -154,7 +155,7 @@ fi
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:z:m:S:NdhVQP" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:m:p:S:NdhVQP" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
@@ -166,6 +167,7 @@ while getopts "C:D:L:w:s:x:q:r:z:m:S:NdhVQP" opt; do
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
+    p) ASHS_USE_PARALLEL=1; ASHS_PARALLEL_OPTS=$OPTARG;;
     z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
@@ -328,7 +330,7 @@ fi
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
-export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS
+export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_PARALLEL_OPTS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
 export SIDES XVAL_STAGE_SPEC
 
