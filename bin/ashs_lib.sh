@@ -437,7 +437,7 @@ function ashs_align_t1t2()
       fi
 
       # Use greedy affine mode to perform registration 
-      greedy -d 3 -a -dof 6 -m MI -n 100x100x10 \
+      greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m MI -n 100x100x10 \
         -i $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
         ${INIT_RIGID} \
         -o $SUBJ_AFF_T2T1_MAT 
@@ -497,12 +497,12 @@ function ashs_ants_pairwise()
     fi 
 
     # Perform greedy affine registration with mask and NCC metric
-    time greedy -d 3 -a \
+    time greedy -d 3 $ASHS_GREEDY_THREADS -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
       -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER -float 
 
     # Perform greedy deformable registration with NCC metric
-    time greedy -d 3 -it $ATLAS_SUBJ_AFF_MAT \
+    time greedy -d 3 $ASHS_GREEDY_THREADS -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
       -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER -e 0.5 -float
 
@@ -520,7 +520,8 @@ function ashs_ants_pairwise()
   else
 
     # Apply full composite warp from atlas TSE to subject TSE
-    greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
+    greedy -d 3 $ASHS_GREEDY_THREADS \
+      -rf $SUBJ_SIDE_TSE_NATCHUNK \
       -rm $ATLAS_TSE $ATLAS_RESLICE \
       -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
       -r $SUBJ_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T2TEMP_TRAN
@@ -568,12 +569,14 @@ function ashs_reslice_to_template()
       REFSPACE=$ATLAS/template/refspace_${side}.nii.gz
 
       # Map the TSE image to the template space
-      greedy -d 3 -rf $REFSPACE \
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $REFSPACE \
         -rm $SUBJ_TSE $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
         -r $SUBJ_T2TEMP_TRAN
 
       # Map the mprage image to the template space
-      greedy -d 3 -rf $REFSPACE \
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $REFSPACE \
         -rm $SUBJ_MPRAGE $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP \
         -r $SUBJ_T1TEMP_TRAN
 
@@ -583,7 +586,8 @@ function ashs_reslice_to_template()
         -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK 
 
       # Create a native-space chunk of the ASHS_TSE image 
-      greedy -d 3 -rf $SUBJ_TSE \
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $SUBJ_TSE \
         -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
         -r $SUBJ_T2TEMP_INVTRAN
 
@@ -853,31 +857,31 @@ function ashs_template_single_reg()
   if [[ $DO_RIGID -eq 1 ]]; then
 
     # Perform affine registration to template
-    time greedy -d 3 \
+    time greedy -d 3  $ASHS_GREEDY_THREADS \
       -a -i $TEMPLATE $MPRAGE -o $RIGM \
       -ia $INIT -m NCC 2x2x2 \
       -n 60x20x0 -dof 6
 
     # Reslice to template
-    greedy -d 3 -float \
+    greedy -d 3 $ASHS_GREEDY_THREADS -float \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $RIGM
 
   else
 
     # Perform affine registration to template
-    time greedy -d 3 \
+    time greedy -d 3 $ASHS_GREEDY_THREADS \
       -a -i $TEMPLATE $MPRAGE -o $AFFM \
       -ia $INIT -m NCC 2x2x2 \
       -n 60x20x0
     
     # Perform deformable registration to template
-    time greedy -d 3 \
+    time greedy -d 3 $ASHS_GREEDY_THREADS \
       -i $TEMPLATE $MPRAGE -o $WARP \
       -it $AFFM -m NCC 2x2x2 \
       -n $ASHS_TEMPLATE_ANTS_ITER
 
     # Reslice to template
-    greedy -d 3 \
+    greedy -d 3 $ASHS_GREEDY_THREADS \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $WARP $AFFM
 
   fi
@@ -890,7 +894,7 @@ function ashs_template_reslice_seg()
   local TEMPLATE_DIR=$ASHS_WORK/template_build
 
   # Reslice the segmentation into the template space
-  greedy -d 3 \
+  greedy -d 3 $ASHS_GREEDY_THREADS \
     -rf $TEMPLATE_DIR/atlastemplate.nii.gz \
     -ri LABEL 0.2vox \
     -rm $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
@@ -958,7 +962,7 @@ function ashs_template_pairwise_rigid()
       local COST=$WDIR/ncc_${FIX_ID}_${MOV_ID}.txt
 
       # Perform greedy registration
-      greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
+      greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m NCC 2x2x2 \
         -i $FIX_IMG $MOV_IMG \
         -o $RMAT -ia-id -n 40 | tee $TMPDIR/reg.txt
 
@@ -1095,7 +1099,7 @@ function ashs_atlas_resample_tse_subj()
   c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT
 
   # And we need to generate the inverse of the template warp
-  greedy -d 3 \
+  greedy -d 3 $ASHS_GREEDY_THREADS \
     -invexp 4 \
     -iw $SUBJ_T1TEMP_WARP $SUBJ_T1TEMP_INVWARP
 

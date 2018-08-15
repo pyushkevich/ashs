@@ -177,18 +177,18 @@ else
 
   # Start with a very fast rigid transform - hope is it won't hurt things and
   # will actually prevent affine from doing insane scaling
-  time greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
+  time greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
     -o $WAFF/greedy_t1_to_template_init_rigid.mat -n 400x0x0x0 \
     -ia-image-centers -search 400 5 5
     
   # Use greedy
-  time greedy -d 3 -a -m NCC 2x2x2 \
+  time greedy -d 3 $ASHS_GREEDY_THREADS -a -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
     -o $WAFF/greedy_t1_to_template.mat -n 400x80x40x0 \
     -ia $WAFF/greedy_t1_to_template_init_rigid.mat
 
-  greedy -d 3 -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
+  greedy -d 3 $ASHS_GREEDY_THREADS -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
     -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
 
   # Store the transform
@@ -216,7 +216,7 @@ if [[ $ASHS_SKIP_ANTS && -f $SUBJ_T1TEMP_WARP ]]; then
   
 else
     
-    time greedy -d 3 -m NCC 2x2x2 -e 0.5 -n ${ASHS_TEMPLATE_ANTS_ITER} \
+    time greedy -d 3 $ASHS_GREEDY_THREADS -m NCC 2x2x2 -e 0.5 -n ${ASHS_TEMPLATE_ANTS_ITER} \
       -i $TEMP_T1_FULL $SUBJ_AFF_T1TEMP_RESLICE \
       -o $SUBJ_T1TEMP_WARP \
       -oinv $SUBJ_T1TEMP_INVWARP \
@@ -234,11 +234,11 @@ else
 fi
 
 # Apply the transformation to the T1 image and to the T1 segmentation
-greedy -d 3 -rm $SUBJ_MPRAGE $WANT/reslice_mprage_to_template.nii.gz \
+greedy -d 3 $ASHS_GREEDY_THREADS -rm $SUBJ_MPRAGE $WANT/reslice_mprage_to_template.nii.gz \
   -rf $TEMP_T1_FULL -r $SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT
 
 # Apply the transformation to the T2 image 
-greedy -d 3 -rm $SUBJ_TSE $WANT/reslice_tse_to_template.nii.gz \
+greedy -d 3 $ASHS_GREEDY_THREADS -rm $SUBJ_TSE $WANT/reslice_tse_to_template.nii.gz \
   -rf $TEMP_T1_FULL -r $SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT
 
 # Transform all of the images into the chunk template space

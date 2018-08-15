@@ -4,6 +4,18 @@ Release Notes
 ######################################################
 
 =========================
+Revision 100, July 2018
+=========================
+
+New in this Revision:
+---------------------
+
+* Added support for non-local-mean denoising and upsampling as preprocessing steps
+
+* User can specify additional arguments for GNU parallel
+
+
+=========================
 Revision 90, May 2012
 =========================
 

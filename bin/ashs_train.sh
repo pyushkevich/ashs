@@ -55,6 +55,7 @@ function usage()
 		  -m file           Specify transforms between T1 and T2 scans for some atlases. This is useful when
 		                    registration between the T1 and T2 images fails during training. See "transform
 		                    specification file" below.
+                  -t threads        Specify number of parallel threads the greedy runs
 		  -S integer        Specify stage(s) for cross-validation. Only useful if you need to rerun the 
 		                    cross-validation and want to run just a subset of stages. For developers mostly.
 		  -V                Display version information and exit
@@ -153,9 +154,10 @@ fi
 
 # Special actions (e.g., print version info, etc.)
 unset ASHS_SPECIAL_ACTION
+unset ASHS_GREEDY_THREADS
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:z:m:p:S:NdhVQP" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:m:p:t:S:NdhVQP" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
@@ -168,6 +170,7 @@ while getopts "C:D:L:w:s:x:q:r:z:m:p:S:NdhVQP" opt; do
     P) ASHS_USE_PARALLEL=1;;
     q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
     p) ASHS_USE_PARALLEL=1; ASHS_PARALLEL_OPTS=$OPTARG;;
+    t) ASHS_GREEDY_THREADS=" -threads $OPTARG ";;
     z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
@@ -330,7 +333,7 @@ fi
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
-export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_PARALLEL_OPTS
+export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_PARALLEL_OPTS ASHS_GREEDY_THREADS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
 export SIDES XVAL_STAGE_SPEC
 
