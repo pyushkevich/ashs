@@ -217,9 +217,12 @@ private:
   // Optional weight map array
   WeightMapArray m_WeightMapArray;
 
+<<<<<<< HEAD
   // Array of weight map data pointers - for faster access
   float **m_WeightMapArrayBuffer;
 
+=======
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
   // Organized lists of inputs
   InputImagePointer m_Target, m_MaskImage;
   InputImageList m_AtlasSegs, m_Atlases;

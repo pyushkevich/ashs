@@ -518,12 +518,55 @@ function ashs_ants_pairwise()
   
   else
 
+<<<<<<< HEAD
     # Apply full composite warp from atlas TSE to subject TSE
     greedy -d 3 $ASHS_GREEDY_THREADS \
       -rf $SUBJ_SIDE_TSE_NATCHUNK \
       -rm $ATLAS_TSE $ATLAS_RESLICE \
       -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
       -r $SUBJ_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T2TEMP_TRAN
+=======
+    # Create a composite warp from atlas to target image (temporary)
+    #/usr/bin/time -f "ComposeMultiTransform: walltime=%E, memory=%M" \
+    time \
+      ComposeMultiTransform 3 \
+        $TMPDIR/fullWarp.nii \
+        -R tse_native_chunk_${side}.nii.gz \
+        -i flirt_t2_to_t1/flirt_t2_to_t1_ITK.txt \
+        -i ants_t1_to_temp/ants_t1_to_tempAffine.txt \
+        ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii.gz \
+        $WREG/antsregWarp.nii.gz \
+        $WREG/antsregAffine.txt \
+        $ATLAS_ANTS_WARP $ATLAS_ANTS_AFFINE $ATLAS_FLIRT
+
+    # Apply the composite warp to the tse image
+    #/usr/bin/time -f "Warp TSE: walltime=%E, memory=%M" \
+    time \
+      WarpImageMultiTransform 3 $ATLAS_TSE \
+        $WREG/atlas_to_native.nii.gz \
+        $TMPDIR/fullWarp.nii
+
+    # Warp the segmentation labels the same way. This should work with WarpImageMultiTransform --use-ML
+    # but for some reason that is still broken. Let's use the old way
+    local LSET=($(c3d $ATLAS_SEG -dup -lstat | awk 'NR > 1 {print $1}'))
+
+    for ((i=0; i < ${#LSET[*]}; i++)); do
+
+      local LID=$(printf '%03d' $i)
+      c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth $ASHS_LABEL_SMOOTHING -o $TMPDIR/label_${LID}.nii.gz
+
+      #/usr/bin/time -f "Warp label ${LID}: walltime=%E, memory=%M" \
+      time \
+        WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
+          $TMPDIR/label_${LID}_warp.nii.gz \
+          $TMPDIR/fullWarp.nii
+
+    done
+
+    # Perform voting using replacement rules
+    local RULES=$(for ((i=0; i < ${#LSET[*]}; i++)); do echo $i ${LSET[i]}; done)
+    c3d $TMPDIR/label_*_warp.nii.gz -vote -replace $RULES -o $WREG/atlas_to_native_segvote.nii.gz
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
 
   fi
 
@@ -658,8 +701,11 @@ BLOCK1
   fi
 
   # Run the label fusion program
+<<<<<<< HEAD
   # note: the raw posteriors command here is for compatibility with old atlases
   # in which posteriors are not normalized to [0 1] range
+=======
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
   #/usr/bin/time -f "Label Fusion: walltime=%E, memory=%M" \
   time \
     label_fusion 3 -g $ATLASES -l $ATLSEGS \
@@ -1644,8 +1690,17 @@ function ashs_xval_loo()
   # The output path for the segmentation result
   local FNOUT=$WTRAIN/loo_seg_${LOOID}_${side}.nii.gz
 
+<<<<<<< HEAD
   # The output path for the posteriors
   local POSTERIOR=$WTRAIN/loo_posterior_${LOOID}_${side}_%03d.nii.gz
+=======
+      # Now run for real
+      #/usr/bin/time -f "BiasLearn $mode: walltime=%E, memory=%M" \
+      time \
+        bl truthlist.txt autolist.txt $label \
+          $ASHS_EC_DILATION $ASHS_EC_PATCH_RADIUS $FRAC $ASHS_EC_ITERATIONS adaboost_${mode} \
+            $GRAYLIST -p $POSTLIST
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
 
   # Left out atlas directory
   local LOODIR=$ASHS_WORK/atlas/$LOOID
