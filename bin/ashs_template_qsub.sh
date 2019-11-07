@@ -188,17 +188,17 @@ else
     -o $WAFF/greedy_t1_to_template.mat -n 400x80x40x0 \
     -ia $WAFF/greedy_t1_to_template_init_rigid.mat
 
-  greedy -d 3 $ASHS_GREEDY_THREADS -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
-    -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
-
-  # Store the transform
-  cp -a $WAFF/greedy_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
-  ln -sf $WAFF/test_greedy_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
-
-  # Compute the inverse matrix
-  c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT
-
 fi
+
+greedy -d 3 $ASHS_GREEDY_THREADS -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
+  -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
+
+# Store the transform
+cp -a $WAFF/greedy_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
+ln -sf $WAFF/test_greedy_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
+
+# Compute the inverse matrix
+c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT
 
 # Report some more progress
 if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
