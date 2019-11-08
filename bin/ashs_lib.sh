@@ -377,10 +377,16 @@ function ashs_atlas_side_vars()
   if [[ $ATLAS_MODE -eq 0 ]]; then
     TDIR=$ASHS_ATLAS/train/train${tid} 
     ATLAS_T1TEMP_WARP=$TDIR/greedy_t1_to_template_${side}_warp.nii.gz
+    # Variables with the additional affine registration between modalities
+    ATLAS_SIDE_AFF_T2T1_MAT=$TDIR/greedy_t2_to_t1_chunk_${side}.mat
+    ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/greedy_t2_to_t1_chunk_${side}_inv.mat
   else
     TDIR=$ASHS_WORK/atlas/${tid}
     ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz
     ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz
+    # Variables with the additional affine registration between modalities
+    ATLAS_SIDE_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat
+    ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
   fi
 
   # Composite transformations from T1 and template
@@ -401,8 +407,6 @@ function ashs_atlas_side_vars()
   ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
 
   # Variables with the additional affine registration between modalities
-  ATLAS_SIDE_AFF_T2T1_MAT=$TDIR/greedy_t2_to_t1_chunk_${side}.mat
-  ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/greedy_t2_to_t1_chunk_${side}_inv.mat
   ATLAS_SIDE_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_MAT $ATLAS_SIDE_AFF_T2T1_MAT"
   ATLAS_SIDE_T2TEMP_INVTRAN="$ATLAS_SIDE_AFF_T2T1_INVMAT $ATLAS_AFF_T2T1_INVMAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
 }
