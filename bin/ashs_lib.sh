@@ -634,14 +634,14 @@ function ashs_reslice_to_template()
       # using the chunk images whole-brian if specified.
       # This is for MTL segmentation because whole-brain rigid registration has trouble 
       # in registering MTL structures of each side well.
-      if [[ $ASHS_SKIP_CHUNK_AFFINE && \
+      if [[ $ASHS_SKIP_CHUNK_AFFINE == 1 && \
             -f $SUBJ_SIDE_AFF_T2T1_MAT && \
             -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]];
       then
         echo "Skipping additional affine registration for $side"
       else
 
-        if [[ $ASHS_CHUNK_AFFINE ]]; then
+        if [[ $ASHS_CHUNK_AFFINE == 1 ]]; then
           greedy -d 3 $ASHS_GREEDY_THREADS \
             -rf $SUBJ_SIDE_TSE_NATCHUNK \
             -rm $SUBJ_MPRAGE $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
