@@ -319,6 +319,14 @@ function ashs_subj_side_vars()
   SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP=$WORK/mprage_to_chunktemp_${side}.nii.gz
   SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK=$WORK/tse_to_chunktemp_${side}_regmask.nii.gz
   SUBJ_SIDE_TSE_NATCHUNK=$WORK/tse_native_chunk_${side}.nii.gz
+  SUBJ_SIDE_TSE_NATCHUNK_REGMASK=$WORK/tse_native_chunk_${side}_regmask.nii.gz
+  SUBJ_SIDE_MPRAGE_NATCHUNK=$WORK/mprage_to_tse_native_chunk_${side}.nii.gz
+  SUBJ_SIDE_AFF_T2T1_MAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat
+  SUBJ_SIDE_AFF_T2T1_INVMAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
+
+  # Composite transformations from T2 and template
+  SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_MAT $SUBJ_SIDE_AFF_T2T1_MAT"
+  SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_SIDE_AFF_T2T1_INVMAT $SUBJ_AFF_T2T1_INVMAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
 }
 
 # ASHS atlas-specific variables
@@ -391,6 +399,12 @@ function ashs_atlas_side_vars()
 
   # Atlas segmentations in native space
   ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
+
+  # Variables with the additional affine registration between modalities
+  ATLAS_SIDE_AFF_T2T1_MAT=$TDIR/greedy_t2_to_t1_chunk_${side}.mat
+  ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/greedy_t2_to_t1_chunk_${side}_inv.mat
+  ATLAS_SIDE_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_MAT $ATLAS_SIDE_AFF_T2T1_MAT"
+  ATLAS_SIDE_T2TEMP_INVTRAN="$ATLAS_SIDE_AFF_T2T1_INVMAT $ATLAS_AFF_T2T1_INVMAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
 }
 
 
@@ -484,6 +498,11 @@ function ashs_ants_pairwise()
 
       # T1 has a zero weight
       local METRIC_TERM="-i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP"
+
+    elif [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print ($1 == 1.0)}') -eq 1 ]]; then
+
+      # T1 has 1.0 weight (use T1 only)
+      local METRIC_TERM="-i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
       
     else
 
@@ -503,16 +522,18 @@ function ashs_ants_pairwise()
     # Perform greedy deformable registration with NCC metric
     time greedy -d 3 $ASHS_GREEDY_THREADS -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
-      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER -e 0.5 -float
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER \
+      -e $ASHS_PAIRWISE_ANTS_STEPSIZE -float
 
   fi
 
   # Define the resliced images
   local ATLAS_RESLICE=$WREG/atlas_to_native.nii.gz
   local ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
+  local ATLAS_MPRAGE_RESLICE=$WREG/atlas_to_native_mprage.nii.gz
 
   # Reslice the atlas into target space
-  if [[ $ASHS_SKIP && -f $ATLAS_RESLICE && -f $ATLAS_RESLICE_SEG ]]; then
+  if [[ $ASHS_SKIP && -f $ATLAS_RESLICE && -f $ATLAS_RESLICE_SEG && -f $ATLAS_MPRAGE_RESLICE ]]; then
 
     echo "Skipping reslicing into native space"
   
@@ -523,7 +544,18 @@ function ashs_ants_pairwise()
       -rf $SUBJ_SIDE_TSE_NATCHUNK \
       -rm $ATLAS_TSE $ATLAS_RESLICE \
       -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
-      -r $SUBJ_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T2TEMP_TRAN
+      -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_SIDE_T2TEMP_TRAN
+
+    # Apply full composite warp from atlas MPRAGE to subject TSE
+    greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
+      -rm $ATLAS_MPRAGE $ATLAS_MPRAGE_RESLICE \
+      -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T1TEMP_TRAN
+
+    # This is for debugging purpose only
+    #greedy -d 3 -rf $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+    #  -rm $ATLAS_MPRAGE $WREG/atlas_to_native_mprage_template.nii.gz \
+    #  -r $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T1TEMP_TRAN
+
 
   fi
 
@@ -568,8 +600,7 @@ function ashs_reslice_to_template()
       REFSPACE=$ATLAS/template/refspace_${side}.nii.gz
 
       # Map the TSE image to the template space
-      greedy -d 3 $ASHS_GREEDY_THREADS \
-        -rf $REFSPACE \
+      greedy -d 3 -rf $REFSPACE \
         -rm $SUBJ_TSE $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
         -r $SUBJ_T2TEMP_TRAN
 
@@ -582,19 +613,82 @@ function ashs_reslice_to_template()
       # Create a custom mask for the ASHS_TSE image
       c3d $SUBJ_SIDE_TSE_TO_CHUNKTEMP -verbose -pim r -thresh 0.001% inf 1 0 \
         -erode 0 4x4x4 $REFSPACE -times -type uchar \
-        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK 
+        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
 
-      # Create a native-space chunk of the ASHS_TSE image 
-      greedy -d 3 $ASHS_GREEDY_THREADS \
-        -rf $SUBJ_TSE \
+      # Create a native-space chunk of the ASHS_TSE image
+      greedy -d 3 -rf $SUBJ_TSE \
         -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
         -r $SUBJ_T2TEMP_INVTRAN
 
-      # Notice that we pad a little in the z-direction. This is to make sure that 
-      # we get all the slices in the image, otherwise there will be problems with 
+      # Notice that we pad a little in the z-direction. This is to make sure that
+      # we get all the slices in the image, otherwise there will be problems with
       # the voting code.
       c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
         $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
+
+      # Perform additional alignment between the two modalities for each side
+      # using the chunk images whole-brian if specified.
+      # This is for MTL segmentation because whole-brain rigid registration has trouble 
+      # in registering MTL structures of each side well.
+      if [[ $ASHS_SKIP_CHUNK_AFFINE && \
+            -f $SUBJ_SIDE_AFF_T2T1_MAT && \
+            -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]];
+      then
+        echo "Skipping additional affine registration for $side"
+      else
+
+        if [[ $ASHS_CHUNK_AFFINE ]]; then
+          greedy -d 3 $ASHS_GREEDY_THREADS \
+            -rf $SUBJ_SIDE_TSE_NATCHUNK \
+            -rm $SUBJ_MPRAGE $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
+            -r $SUBJ_AFF_T2T1_INVMAT
+          greedy -d 3 $ASHS_GREEDY_THREADS \
+            -a -dof 12 -m MI -n 20 \
+            -i $SUBJ_SIDE_TSE_NATCHUNK \
+               $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
+            -o $SUBJ_SIDE_AFF_T2T1_INVMAT
+          c3d_affine_tool $SUBJ_SIDE_AFF_T2T1_INVMAT -inv \
+             -o $SUBJ_SIDE_AFF_T2T1_MAT
+        else
+          # Use identity matrix for additional affine registration
+          cp $ASHS_ROOT/bin/identity.mat $SUBJ_SIDE_AFF_T2T1_INVMAT 
+          cp $ASHS_ROOT/bin/identity.mat $SUBJ_SIDE_AFF_T2T1_MAT
+        fi
+
+      fi 
+      
+      # remove TSE to chunktemp images
+      rm -f $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+            $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+  
+      # Map the TSE image to the template space
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $REFSPACE \
+        -rm $SUBJ_TSE $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+        -r $SUBJ_SIDE_T2TEMP_TRAN
+
+      # refine a custom mask for the ASHS_TSE image
+      c3d $SUBJ_SIDE_TSE_TO_CHUNKTEMP -verbose -pim r -thresh 0.001% inf 1 0 \
+        -erode 0 4x4x4 $REFSPACE -times -type uchar \
+        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+
+      # refine a custom mask for the ASHS_TSE image
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $SUBJ_TSE \
+        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
+        -r $SUBJ_SIDE_T2TEMP_INVTRAN 
+
+      # Notice that we pad a little in the z-direction. This is to make sure that
+      # we get all the slices in the image, otherwise there will be problems with
+      # the voting code.
+      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
+        $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
+
+      # Resample MPRAGE to TSE space of each side
+      greedy -d 3 $ASHS_GREEDY_THREADS\
+        -rf $SUBJ_SIDE_TSE_NATCHUNK \
+        -rm $SUBJ_MPRAGE $SUBJ_SIDE_MPRAGE_NATCHUNK \
+        -r $SUBJ_SIDE_AFF_T2T1_INVMAT $SUBJ_AFF_T2T1_INVMAT \
 
     fi
 
@@ -1198,6 +1292,8 @@ function ashs_atlas_organize_one()
       $IDIR/tse_to_chunktemp_${side}_regmask.nii.gz \
       $IDIR/mprage_to_chunktemp_${side}.nii.gz \
       $IDIR/seg_${side}.nii.gz \
+      $IDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat \
+      $IDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat \
       $ODIR/
 
     # Copy the transformation to the template space. We only care about
@@ -1270,7 +1366,6 @@ function ashs_atlas_organize_final()
   bet2 template.nii.gz template_bet -m -v
   cd $ASHS_WORK 
 }
-
 
 # Organize cross-validation directories for running cross-validation experiments using qsubmit_single_array so that GNU parallel can be used
 function ashs_atlas_organize_xval()
@@ -1363,7 +1458,7 @@ function ashs_atlas_organize_xval()
       done
 
       for fn in affine_t1_to_template/t1_to_template_affine.mat \
-        affine_t1_to_template/t1_to_template_affine_inv.mat 
+        affine_t1_to_template/t1_to_template_affine_inv.mat
       do
         cp $MYATL/$fn $XVSUBJ/$fn
       done
@@ -1373,6 +1468,16 @@ function ashs_atlas_organize_xval()
          $XVSUBJ/affine_t1_to_template/greedy_t1_to_template.mat
       cp $XVSUBJ/affine_t1_to_template/t1_to_template_affine_inv.mat \
          $XVSUBJ/affine_t1_to_template/greedy_t1_to_template_inv.mat
+
+      # link additional affine registration for each side
+      for side in $SIDES; do
+        for fn in flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat \
+          flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
+        do
+          ln -sf $MYATL/$fn $XVSUBJ/$fn
+        done
+      done
+
 
       # We can also reuse the atlas-to-target stuff
       myidx=0

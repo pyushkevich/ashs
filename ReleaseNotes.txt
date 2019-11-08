@@ -4,6 +4,21 @@ Release Notes
 ######################################################
 
 =========================
+Revision 110, Nov 2019
+=========================
+
+New in this Revision:
+---------------------
+
+* Started to multimodal support to ASHS. In this revision, the option to perform 
+  multimodal registration was added. In future revisions, multimodal label fusion
+  and multimodal corrective learning.
+
+* In some application (e.g. MTL segmentation), additional affine alignment is needed
+  to accurately align the two modalities for each side separately in addition to 
+  global whole image rigid registration.
+
+=========================
 Revision 100, July 2018
 =========================
 

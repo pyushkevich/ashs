@@ -86,6 +86,12 @@ ASHS_TSE_ISO_REGION_CROP="20x20x0% 60x60x100%"
 # calling ASHS with the -N flag (to not rerun existing registrations)
 ASHS_FLIRT_MULTIMODAL_OPTS="-searchrx -5 5 -searchry -5 5 -searchrz -5 5 -coarsesearch 3 -finesearch 1 -searchcost normmi"
 
+# These are the flags for the additional affine registration between modalities.
+# The purpose of additional affine registration is to take care the residule misalignment
+# of each side (mainly for MTL segmentation). This is by default disabled.
+ASHS_CHUNK_AFFINE=0
+ASHS_SKIP_CHUNK_AFFINE=1
+
 # ------------------------------------------------
 # ASHS_MPRAGE template creation/registration parameters
 # ------------------------------------------------
