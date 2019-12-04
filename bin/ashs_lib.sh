@@ -935,7 +935,7 @@ function ashs_template_reslice_seg()
     -r \
       $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz \
       $TEMPLATE_DIR/atlas_${id}_to_template_affine.mat \
-      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat
+      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat,-1
 }
 
 function ashs_template_side_roi()
