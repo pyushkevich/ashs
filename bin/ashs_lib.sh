@@ -526,11 +526,11 @@ function ashs_ants_pairwise()
 
       # T1 has non-zero weight
       local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print (1.0 - $1)}')
-      local METRIC_TERM=\
-        "-w $T2WGT \
-         -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
-         -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
-         -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
+      local METRIC_TERM="\
+        -w $T2WGT \
+        -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
+        -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
+        -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
     fi 
 
     # Perform greedy affine registration with mask and NCC metric
