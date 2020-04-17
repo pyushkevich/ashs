@@ -852,11 +852,19 @@ function ashs_average_images_normalized()
   # Perform average for each line
   for ((i=1;i<=$NBATCH;i++)); do
 
-    c3d $REFIMG -popas R \
-      $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
-      -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
-      -accum -add -endaccum \
-      -o $TMPDIR/avg_batch_$i.nii.gz
+    local BATCHINPUT=$(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1)
+    local BATCHSIZE=$(echo $BATCHINPUT | wc -w)
+
+    # Avoid batches of 1 image
+    if [[ $BATCHSIZE -gt 1 ]]; then
+      c3d $REFIMG -popas R \
+        $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
+        -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
+        -accum -add -endaccum \
+        -o $TMPDIR/avg_batch_$i.nii.gz
+    else
+      cp $BATCHINPUT $TMPDIR/avg_batch_$i.nii.gz
+    fi
 
   done
 
