@@ -323,10 +323,16 @@ function ashs_subj_side_vars()
   SUBJ_SIDE_MPRAGE_NATCHUNK=$WORK/mprage_to_tse_native_chunk_${side}.nii.gz
   SUBJ_SIDE_AFF_T2T1_MAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat
   SUBJ_SIDE_AFF_T2T1_INVMAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
+  if [[ ! -f $SUBJ_SIDE_AFF_T2T1_MAT ]]; then
+    SUBJ_SIDE_AFF_T2T1_MAT=$ASHS_ROOT/bin/identity.mat
+  fi
+  if [[ ! -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]]; then
+    SUBJ_SIDE_AFF_T2T1_INVMAT=$ASHS_ROOT/bin/identity.mat
+  fi
 
   # Composite transformations from T2 and template
-  SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_MAT $SUBJ_SIDE_AFF_T2T1_MAT"
-  SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_SIDE_AFF_T2T1_INVMAT $SUBJ_AFF_T2T1_INVMAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+  SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT $SUBJ_SIDE_AFF_T2T1_INVMAT"
+  SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_SIDE_AFF_T2T1_MAT $SUBJ_AFF_T2T1_MAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
 }
 
 # ASHS atlas-specific variables
@@ -407,8 +413,8 @@ function ashs_atlas_side_vars()
   ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
 
   # Variables with the additional affine registration between modalities
-  ATLAS_SIDE_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_MAT $ATLAS_SIDE_AFF_T2T1_MAT"
-  ATLAS_SIDE_T2TEMP_INVTRAN="$ATLAS_SIDE_AFF_T2T1_INVMAT $ATLAS_AFF_T2T1_INVMAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
+  ATLAS_SIDE_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_INVMAT $ATLAS_SIDE_AFF_T2T1_INVMAT"
+  ATLAS_SIDE_T2TEMP_INVTRAN="$ATLAS_SIDE_AFF_T2T1_MAT $ATLAS_AFF_T2T1_MAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
 }
 
 
@@ -551,9 +557,11 @@ function ashs_ants_pairwise()
       -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_SIDE_T2TEMP_TRAN
 
     # Apply full composite warp from atlas MPRAGE to subject TSE
-    greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
-      -rm $ATLAS_MPRAGE $ATLAS_MPRAGE_RESLICE \
-      -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T1TEMP_TRAN
+    if [[ -f $ATLAS_MPRAGE ]]; then
+      greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
+        -rm $ATLAS_MPRAGE $ATLAS_MPRAGE_RESLICE \
+        -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T1TEMP_TRAN
+    fi
 
     # This is for debugging purpose only
     #greedy -d 3 -rf $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
@@ -645,14 +653,14 @@ function ashs_reslice_to_template()
           greedy -d 3 $ASHS_GREEDY_THREADS \
             -rf $SUBJ_SIDE_TSE_NATCHUNK \
             -rm $SUBJ_MPRAGE $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
-            -r $SUBJ_AFF_T2T1_INVMAT
+            -r $SUBJ_AFF_T2T1_MAT
           greedy -d 3 $ASHS_GREEDY_THREADS \
             -a -dof 12 -m MI -n 20 \
             -i $SUBJ_SIDE_TSE_NATCHUNK \
                $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
-            -o $SUBJ_SIDE_AFF_T2T1_INVMAT
-          c3d_affine_tool $SUBJ_SIDE_AFF_T2T1_INVMAT -inv \
-             -o $SUBJ_SIDE_AFF_T2T1_MAT
+            -o $SUBJ_SIDE_AFF_T2T1_MAT
+          c3d_affine_tool $SUBJ_SIDE_AFF_T2T1_MAT -inv \
+             -o $SUBJ_SIDE_AFF_T2T1_INVMAT
         else
           # Use identity matrix for additional affine registration
           cp $ASHS_ROOT/bin/identity.mat $SUBJ_SIDE_AFF_T2T1_INVMAT 
@@ -692,7 +700,7 @@ function ashs_reslice_to_template()
       greedy -d 3 $ASHS_GREEDY_THREADS\
         -rf $SUBJ_SIDE_TSE_NATCHUNK \
         -rm $SUBJ_MPRAGE $SUBJ_SIDE_MPRAGE_NATCHUNK \
-        -r $SUBJ_SIDE_AFF_T2T1_INVMAT $SUBJ_AFF_T2T1_INVMAT \
+        -r $SUBJ_SIDE_AFF_T2T1_MAT $SUBJ_AFF_T2T1_MAT \
 
     fi
 
@@ -916,11 +924,18 @@ function ashs_average_images_normalized()
   # Perform average for each line
   for ((i=1;i<=$NBATCH;i++)); do
 
-    c3d $REFIMG -popas R \
-      $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
-      -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
-      -accum -add -endaccum \
-      -o $TMPDIR/avg_batch_$i.nii.gz
+    imgs=($(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1))
+    if [[ ${#imgs[*]} == 1 ]]; then
+      c3d $REFIMG $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
+        -stretch 0% 99% 0 1000  -reslice-identity \
+        -o $TMPDIR/avg_batch_$i.nii.gz
+    else
+      c3d $REFIMG -popas R \
+        $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
+        -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
+        -accum -add -endaccum \
+        -o $TMPDIR/avg_batch_$i.nii.gz
+    fi
 
   done
 
@@ -1025,6 +1040,7 @@ function ashs_template_side_roi()
   # Average the segmentations and create a target ROI with desired resolution
   c3d \
     $CMDLINE \
+    -type double \
     -scale $(echo $N | awk '{print 1.0 / $1}') \
     -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
     -o $TEMPLATE_DIR/meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
@@ -1284,6 +1300,7 @@ function ashs_atlas_organize_one()
 
   # Copy the full ASHS_TSE (fix this later!)
   cp -av $IDIR/tse.nii.gz $ODIR/
+  cp -av $IDIR/mprage.nii.gz $ODIR/
 
   # Copy the stuff we need into the atlas directory
   for side in $SIDES; do
