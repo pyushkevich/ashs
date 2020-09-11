@@ -395,6 +395,14 @@ function ashs_atlas_side_vars()
     ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
   fi
 
+  if [[ ! -f $ATLAS_SIDE_AFF_T2T1_MAT ]]; then
+    ATLAS_SIDE_AFF_T2T1_MAT=$ASHS_ROOT/bin/identity.mat
+  fi
+  if [[ ! -f $ATLAS_SIDE_AFF_T2T1_INVMAT ]]; then
+    ATLAS_SIDE_AFF_T2T1_INVMAT=$ASHS_ROOT/bin/identity.mat
+  fi
+
+
   # Composite transformations from T1 and template
   ATLAS_T1TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT"
   ATLAS_T1TEMP_INVTRAN="$ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
