@@ -59,11 +59,13 @@ function usage()
 		                    of segmentations and have SGE, it is better to run each segmentation 
 		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
 		                    is best for when you have only a few segmentations and want them to run fast.
-		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
-		  -z script         Provide a path to an executable script that will be used to retrieve SGE or
-		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
+		  -S                Use SLURM instead of SGE or GNU parallel
+		  -q OPTS           Pass in additional options to SGE/SLURM/GNU Parallel. If -S or -P not specified
+		                    turns on SGE
+		  -z script         Provide a path to an executable script that will be used to retrieve SGE, SLURM
+		                    or GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
 		                    files should consist of two nifti files in quotation marks:
 
@@ -142,6 +144,9 @@ unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK
 unset ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
 
+# Whether using Parallel, SGE or SLURM
+unset ASHS_USE_SOME_BATCHENV
+
 # Set the default hook script - which does almost nothing
 unset ASHS_USE_CUSTOM_HOOKS
 
@@ -163,8 +168,9 @@ while getopts "g:f:w:s:a:q:I:C:r:z:m:HNGTdhVQPMB" opt; do
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
-    q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
-    z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
+    S) ASHS_USE_SLURM=1;;
+    q) ASHS_USE_SOME_BATCHENV=1;ASHS_QSUB_OPTS=$OPTARG;;
+    z) ASHS_USE_SOME_BATCHENV=1;ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     H) ASHS_USE_CUSTOM_HOOKS=1;;
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
@@ -248,9 +254,26 @@ if [[ ! $ASHS_CONFIG ]]; then
   fi
 fi
 
+# Set some parallel environment
+if [[ $ASHS_USE_SOME_BATCHENV && ! $ASHS_USE_SLURM && ! $ASHS_USE_PARALLEL ]]; then
+  ASHS_USE_QSUB=1
+fi
+
 # Check that parallel and qsub are not both on
 if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
   echo "Cannot use SGE (-Q) and GNU Parallel (-P) at the same time"
+  exit -2
+fi
+
+# Check that parallel and qsub are not both on
+if [[ $ASHS_USE_PARALLEL && $ASHS_USE_SLURM ]]; then
+  echo "Cannot use SLURM (-S) and GNU Parallel (-P) at the same time"
+  exit -2
+fi
+
+# Check that parallel and qsub are not both on
+if [[ $ASHS_USE_QSUB && $ASHS_USE_SLURM ]]; then
+  echo "Cannot use SLURM (-S) and SGE (-Q) at the same time"
   exit -2
 fi
 
@@ -316,6 +339,8 @@ if [[ $ASHS_USE_QSUB ]]; then
   fi
 elif [[ $ASHS_USE_PARALLEL ]]; then
   echo "Using GNU parallel"
+elif [[ $ASHS_USE_SLURM ]]; then
+  echo "Using SLURM"
 else
   echo "Not using SGE or GNU parallel"
 fi
@@ -397,7 +422,7 @@ export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFI
 export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
-export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB
+export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB ASHS_USE_SLURM
 
 # List of training atlases 
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)

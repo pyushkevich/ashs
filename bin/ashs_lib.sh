@@ -149,6 +149,8 @@ function qsubmit_sync()
 
   if [[ $ASHS_USE_QSUB ]]; then
     qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $MYNAME $*
+  elif [[ $ASHS_USE_SLURM ]]; then
+    sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -W -D . $*
   else
     fake_qsub $MYNAME $*
   fi
@@ -177,6 +179,23 @@ function qsubmit_single_array()
     export -f get_tmpdir
     parallel -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
 
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM; do
+      
+      JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 \
+        | awk '{print $4}')
+
+      DEPSTRING="$DEPSTRING:$JOB_ID"
+      ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+
+    done
+
+    qwait $DEPSTRING
+
   else
 
     for p1 in $PARAM; do
@@ -195,10 +214,10 @@ function qsubmit_single_array()
 
     done
 
-  fi
+    # Wait for the jobs to be done
+    qwait "${UNIQ_NAME}_*"
 
-  # Wait for the jobs to be done
-  qwait "${UNIQ_NAME}_*"
+  fi
 }
 
 
@@ -227,6 +246,24 @@ function qsubmit_double_array()
     export -f get_tmpdir
     parallel -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
 
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM1; do
+      for p2 in $PARAM2; do
+      
+        JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 $p2 \
+          | awk '{print $4}')
+
+        DEPSTRING="$DEPSTRING:$JOB_ID"
+        ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+      done
+    done
+
+    qwait $DEPSTRING
+
   else
 
     for p1 in $PARAM1; do
@@ -247,10 +284,10 @@ function qsubmit_double_array()
       done
     done
 
-  fi
+    # Wait for the jobs to be done
+    qwait "${UNIQ_NAME}_*"
 
-  # Wait for the jobs to be done
-  qwait "${UNIQ_NAME}_*"
+  fi
 }
 
 
@@ -259,6 +296,8 @@ function qwait()
 {
   if [[ $ASHS_USE_QSUB ]]; then
     qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
+  elif [[ $ASHS_USE_SLURM ]]; then
+    srun -d $1 $QOPTS /bin/sleep 1
   fi
 }
 
@@ -487,11 +526,11 @@ function ashs_ants_pairwise()
 
       # T1 has non-zero weight
       local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print (1.0 - $1)}')
-      local METRIC_TERM=\
-        "-w $T2WGT \
-         -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
-         -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
-         -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
+      local METRIC_TERM="\
+        -w $T2WGT \
+        -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
+        -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
+        -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
     fi 
 
     # Perform greedy affine registration with mask and NCC metric
@@ -896,7 +935,7 @@ function ashs_template_reslice_seg()
     -r \
       $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz \
       $TEMPLATE_DIR/atlas_${id}_to_template_affine.mat \
-      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat
+      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat,-1
 }
 
 function ashs_template_side_roi()
