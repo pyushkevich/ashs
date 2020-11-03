@@ -48,6 +48,7 @@ function usage()
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
 		                    exists, don't run ANTS/FLIRT again
+                  -G                Use template brain mask in T1 template rigid registratian
 		  -T                Tidy mode. Cleans up files once they are unneeded. The -N option will
 		                    have no effect in tidy mode, because ANTS/FLIRT results will be erased.
 		  -I string         Subject ID (for stats output). Defaults to last word of working dir.
@@ -136,7 +137,7 @@ fi
 
 # Clear the variables affected by the flags
 unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
-unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
+unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID ASHS_T1TEMP_RIGID_MASK
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK
 unset ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
@@ -148,7 +149,7 @@ unset ASHS_USE_CUSTOM_HOOKS
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPMB" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:z:m:HNGTdhVQPMB" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;
@@ -157,6 +158,7 @@ while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPMB" opt; do
     w) ASHS_WORK=$(dereflink $OPTARG);;
     s) STAGE_SPEC=$OPTARG;;
     N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
+    G) ASHS_T1TEMP_RIGID_MASK=1; ;;
     T) ASHS_TIDY=1;;
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
@@ -391,7 +393,7 @@ fi
 SIDES="$ASHS_SIDES"
 
 # Run the stages of the script
-export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
+export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS ASHS_T1TEMP_RIGID_MASK
 export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE

@@ -81,19 +81,26 @@ if [[ -f $SUBJ_AFF_T1TEMP_MAT && $ASHS_SKIP_RIGID ]]; then
 
 else
 
+  if [[ $ASHS_T1TEMP_RIGID_MASK ]]; then
+    BMASK=" -gm $TEMP_T1_MASK "
+  else
+    BMASK=""
+  fi
 
   # Start with a very fast rigid transform - hope is it won't hurt things and
   # will actually prevent affine from doing insane scaling
   time greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
     -o $WAFF/greedy_t1_to_template_init_rigid.mat -n 400x0x0x0 \
-    -ia-image-centers -search 400 5 5
+    -ia-image-centers -search 400 5 5 \
+    $BMASK
     
   # Use greedy
   time greedy -d 3 -a -m NCC 2x2x2 \
     -i $TEMP_T1_FULL $SUBJ_MPRAGE \
     -o $WAFF/greedy_t1_to_template.mat -n 400x80x40x0 \
-    -ia $WAFF/greedy_t1_to_template_init_rigid.mat
+    -ia $WAFF/greedy_t1_to_template_init_rigid.mat \
+    $BMASK
 
   greedy -d 3 -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
     -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz

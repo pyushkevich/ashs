@@ -109,7 +109,6 @@ ASHS_TEMPLATE_TARGET_RESOLUTION="0.4688x0.4688x0.4688mm"
 # smaller atlas sets, this should be reduced
 ASHS_TEMPLATE_MASK_THRESHOLD=0.5
 
-
 # -----------------------------
 # Histogram matching parameters
 # -----------------------------
