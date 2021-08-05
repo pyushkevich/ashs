@@ -80,11 +80,14 @@ int usage()
   cout << "  -w filenamePattern              Save weight maps corresponding to the atlases." << endl;
   cout << "                                  The pattern should be like weight%04d.nii.gz" << endl;
   cout << "                                  This really only makes sense for -rs 0x0x0" << endl;
+<<<<<<< HEAD
   cout << "  -M mask.nii                     Optional mask specifying the region where label fusion will be done" << endl;
   cout << "                                  When this is not specified, the mask will be automatically computed" << endl;
   cout << "                                  based on whether there are more than one labels that could be" << endl;
   cout << "                                  potentially assigned to a given voxel" << endl;
   cout << "  -threads N                      Limit number of threads to N" << endl;
+=======
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
   cout << "Parameters for -m Gauss option:" << endl;
   cout << "  sigma                           Standard deviation of Gaussian" << endl;
   cout << "                                  Default: X.XX" << endl;

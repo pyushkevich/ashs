@@ -143,7 +143,7 @@ done
 if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
   # Warp the BET mask
-  greedy -d 3 \
+  greedy -d 3 $ASHS_GREEDY_THREADS \
     -rm $ASHS_ATLAS/template/template_bet_mask.nii.gz $TMPDIR/icv.nii.gz \
     -rf $ASHS_WORK/mprage.nii.gz \
     -r $ASHS_WORK/affine_t1_to_template/t1_to_template_affine_inv.mat \

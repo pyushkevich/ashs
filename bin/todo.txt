@@ -35,3 +35,6 @@ END {for (i=1;i<=NF;i++) printf "%8.4f ",sum[i]/NR; printf "\n"}')
   done
 done
 
+
+Add NLMDenoising and NLMUpsampling
+

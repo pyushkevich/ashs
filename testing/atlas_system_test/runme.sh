@@ -8,7 +8,7 @@ $ASHS_ROOT/bin/ashs_train.sh \
   -D config/manifest.txt \
   -L config/snaplabels.txt \
   -w $OUTDIR \
-  -d \
+  -d -Q \
   -r config/rules.txt \
   -x config/xval.txt \
   -C config/ashs_config_test.sh | tee $OUTDIR/ashs_train_stdout.txt

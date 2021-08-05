@@ -48,28 +48,30 @@ function usage()
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
 		                    exists, don't run ANTS/FLIRT again
+                  -G                Use template brain mask in T1 template rigid registratian
 		  -T                Tidy mode. Cleans up files once they are unneeded. The -N option will
 		                    have no effect in tidy mode, because ANTS/FLIRT results will be erased.
 		  -I string         Subject ID (for stats output). Defaults to last word of working dir.
 		  -V                Display version information and exit
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
-		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. By default,
-		                    the whole ashs_main job runs in a single process. If you are doing a lot
-		                    of segmentations and have SGE, it is better to run each segmentation 
-		                    (ashs_main) in a separate SGE job, rather than use the -q flag. The -q flag
-		                    is best for when you have only a few segmentations and want them to run fast.
+		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. 
+		                    By default, the whole ashs_main job runs in a single process. 
+		                    If you are doing a lot of segmentations and have SGE, it is better to 
+		                    run each segmentation (ashs_main) in a separate SGE job, rather than use the -q flag. 
+		                    The -q flag is best for when you have only a few segmentations and want them to run fast.
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
 		                    have GNU parallel installed.
-		  -S                Use SLURM instead of SGE or GNU parallel
-		  -q OPTS           Pass in additional options to SGE/SLURM/GNU Parallel. If -S or -P not specified
-		                    turns on SGE
-		  -z script         Provide a path to an executable script that will be used to retrieve SGE, SLURM
-		                    or GNU parallel options for different stages of ASHS. Takes precendence over -q
+		  -S                Use SLURM instead of SGE, LSF or GNU parallel
+		  -l                Use LSF instead of SGE, SLURM or GNU parallel
+		  -q OPTS           Pass in additional options to SGE/SLURM/LSF/GNU Parallel. If -S -B or -P not specified
+		                    turns on SGE. 
+		  -z script         Provide a path to an executable script that will be used to retrieve SGE, LSF, SLURM or
+		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
 		                    files should consist of two nifti files in quotation marks:
-
+		                    
 		                      -r "ref_seg_left.nii.gz ref_seg_right.nii.gz"
-
+		                    
 		                    The results will include overlap calculations between different
 		                    stages of the segmentation and the reference segmentation. Note that the
 		                    comparison takes into account the heuristic rules specified in the altas, so
@@ -82,6 +84,7 @@ function usage()
 		                    but this can be modified with the -M flag.
 		  -M                The mat file provided with -m is used as the final T2/T1 registration.
 		                    ASHS will not attempt to run registration between T2 and T2.
+		  -t threads        Specify number of parallel threads the greedy runs
 		  -H                Tell ASHS to use external hooks for reporting progress, errors, and warnings.
 		                    The environment variables ASHS_HOOK_SCRIPT must be set to point to the appropriate
 		                    script. For an example script with comments, see ashs_default_hook.sh
@@ -98,19 +101,19 @@ function usage()
 		  5:                bootstrap segmentation using voting
 		  6:                segmentation Q/A
 		  7:                volumes and statistics
-
+		                    
 		Environment Variables:
 		  ASHS_ROOT         Path to the ASHS root directory
 		  ASHS_HOOK_XXX     See documentation for -H above
-
+		                    
 		Misc Notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
-
-		SGE Options:
-		  You can have detailed control over SGE options by passing a custom shell script to the -z
+		                    
+		SGE/LSF/SLURM/GNU Parallel Options:
+		  You can have detailed control over SGE/LSF/SLURM/GNU Parallel options by passing a custom shell script to the -z
 		  option. ASHS will call this shell script with the working directory as the first parameter
-		  and stage as the second parameter. The script should print to stdout the SGE (qsub) options
+		  and stage as the second parameter. The script should print to stdout the SGE/LSF/SLURM/GNU Parallel options
 		  that should be used for this stage. This allows you to allocate resources for each stage.
 	USAGETEXT
 }
@@ -138,10 +141,14 @@ fi
 
 # Clear the variables affected by the flags
 unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
-unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID
+unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID ASHS_T1TEMP_RIGID_MASK
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
-unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK
+unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK ASHS_GREEDY_THREADS
 unset ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
+unset ASHS_USE_PARALLEL ASHS_USE_SLURM ASHS_USE_LSF
+
+# Whether using Parallel, SGE or SLURM or LSF
+unset ASHS_USE_SOME_BATCHENV
 
 # Whether using Parallel, SGE or SLURM
 unset ASHS_USE_SOME_BATCHENV
@@ -153,7 +160,7 @@ unset ASHS_USE_CUSTOM_HOOKS
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPSMB" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:z:m:t:HNGTdhVQPSMBl" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;
@@ -162,13 +169,16 @@ while getopts "g:f:w:s:a:q:I:C:r:z:m:HNTdhVQPSMB" opt; do
     w) ASHS_WORK=$(dereflink $OPTARG);;
     s) STAGE_SPEC=$OPTARG;;
     N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
+    G) ASHS_T1TEMP_RIGID_MASK=1; ;;
     T) ASHS_TIDY=1;;
     I) ASHS_SUBJID=$OPTARG;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     S) ASHS_USE_SLURM=1;;
-    q) ASHS_USE_SOME_BATCHENV=1;ASHS_QSUB_OPTS=$OPTARG;;
-    z) ASHS_USE_SOME_BATCHENV=1;ASHS_QSUB_HOOK=$OPTARG;;
+    l) ASHS_USE_LSF=1;;
+    q) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_OPTS=$OPTARG;;
+    t) ASHS_GREEDY_THREADS=" -threads $OPTARG ";;
+    z) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     H) ASHS_USE_CUSTOM_HOOKS=1;;
     r) ASHS_REFSEG_LIST=($(echo $OPTARG));;
@@ -263,15 +273,33 @@ if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
   exit -2
 fi
 
-# Check that parallel and qsub are not both on
+# Check that parallel and SLURM are not both on
 if [[ $ASHS_USE_PARALLEL && $ASHS_USE_SLURM ]]; then
   echo "Cannot use SLURM (-S) and GNU Parallel (-P) at the same time"
   exit -2
 fi
 
-# Check that parallel and qsub are not both on
+# Check that qsub and SLURM are not both on
 if [[ $ASHS_USE_QSUB && $ASHS_USE_SLURM ]]; then
   echo "Cannot use SLURM (-S) and SGE (-Q) at the same time"
+  exit -2
+fi
+
+# Check that qsub and bsub are not both on
+if [[ $ASHS_USE_LSF && $ASHS_USE_QSUB ]]; then
+  echo "Cannot use LSF (-l) and SGE (-Q) at the same time"
+  exit -2
+fi
+
+# Check that parallel and bsub are not both on
+if [[ $ASHS_USE_LSF && $ASHS_USE_PARALLEL ]]; then
+  echo "Cannot use LSF (-l) and Parallel (-P) at the same time"
+  exit -2
+fi
+
+# Check that SLURM and bsub are not both on
+if [[ $ASHS_USE_LSF && $ASHS_USE_SLURM ]]; then
+  echo "Cannot use LSF (-l) and SLURM (-S) at the same time"
   exit -2
 fi
 
@@ -319,24 +347,50 @@ if [[ $ASHS_INPUT_T2T1_MAT ]]; then
 fi
 
 # Whether we are using QSUB
+unset ASHS_USE_SOME_BATCHENV
 if [[ $ASHS_USE_QSUB ]]; then
   if [[ ! $SGE_ROOT ]]; then
     echo "-Q flag used, but SGE is not present."
     exit -1;
+  else
+    CNAME="SGE"
+    ASHS_USE_SOME_BATCHENV=1
   fi
+elif [[ $ASHS_USE_PARALLEL ]]; then
+  CNAME="GNU parallel"
+  ASHS_USE_SOME_BATCHENV=1
+elif [[ $ASHS_USE_SLURM ]]; then
+  CNAME="SLURM" 
+  ASHS_USE_SOME_BATCHENV=1
+elif [[ $ASHS_USE_LSF ]]; then
+  if [[ ! $LSF_BINDIR ]]; then
+    echo "-l flag used, but /LSF is not present." 
+  else
+    CNAME="LSF"
+    ASHS_USE_SOME_BATCHENV=1
+  fi
+else
+  CNAME=""
+  ASHS_USE_SOME_BATCHENV=0
+  echo "Not using SGE, LSF, SLURM or GNU parallel"
+fi
+
+if [[ $ASHS_USE_SOME_BATCHENV ]]; then
   if [[ $ASHS_QSUB_HOOK ]]; then
     if [[ ! -f $ASHS_QSUB_HOOK ]]; then
       echo "Parameter to -z ($ASHS_QSUB_HOOK) does not point to a file"
       exit 2
     fi
-    echo "Using SGE with root $SGE_ROOT and callback script $ASHS_QSUB_HOOK"
-  elif [[ $ASHS_QSUB_OPTS ]]; then 
-    echo "Using SGE with root $SGE_ROOT and options \"$ASHS_QSUB_OPTS\""
+    echo "Using $CNAME with callback script $ASHS_QSUB_HOOK"
+  elif [[ $ASHS_QSUB_OPTS ]]; then
+    echo "Using $CNAME with options \"$ASHS_QSUB_OPTS\""
   else
-    echo "Using SGE with root $SGE_ROOT and default options"
+    echo "Using $CNAME with default options"
   fi
 elif [[ $ASHS_USE_PARALLEL ]]; then
   echo "Using GNU parallel"
+elif [[ $ASHS_USE_LSF ]]; then
+  echo "Using LSF"
 elif [[ $ASHS_USE_SLURM ]]; then
   echo "Using SLURM"
 else
@@ -412,21 +466,28 @@ if [[ ! $ASHS_ATLAS_VERSION_DATE || \
   exit 2;
 fi
 
-# List of sides for the array qsub commands below
+# List of sides for the array qsub/bsub commands below
 SIDES="$ASHS_SIDES"
 
 # Run the stages of the script
-export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS
-export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS
+export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS ASHS_T1TEMP_RIGID_MASK
+export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS ASHS_GREEDY_THREADS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
-export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB ASHS_USE_SLURM
+export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB ASHS_USE_SLURM 
+export ASHS_USE_LSF ASHS_USE_PARALLEL
 
 # List of training atlases 
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)
 
 # Lengths of the different stages in terms of relative progress
-STAGE_PPOS=(0.0 0.2 0.5 0.6 0.9 0.95 0.98 1.0)
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  STAGE_PPOS=(0.0 0.5 0.7 0.78 0.87 0.95 0.97 1.0)
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  STAGE_PPOS=(0.0 0.4 0.6 0.72 0.83 0.94 0.96 1.0)
+else
+  STAGE_PPOS=(0.0 0.2 0.5 0.6 0.9 0.95 0.98 1.0)
+fi
 
 # Names of the different stages
 STAGE_NAMES=(\
@@ -466,16 +527,15 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
   echo "Starting stage $STAGE: $STAGE_TEXT"
   echo "****************************************"
 
-  # Put together qsub options for this stage
-  if [[ $ASHS_USE_QSUB ]]; then
-
+  # Put together qsub, bsub, SLURM, GNU parallel options for this stage
+  if [[ $ASHS_USE_SOME_BATCHENV ]]; then
     # Is there a callback script
     if [[ $ASHS_QSUB_HOOK ]]; then
       QOPTS="$(bash $ASHS_QSUB_HOOK $ASHS_WORK $STAGE)"
-      echo "Qsub options for this stage: $QOPTS"
     else
       QOPTS="${ASHS_QSUB_OPTS}"
     fi
+    echo "$CNAME options for this stage: $QOPTS"
   fi
 
   # Send the informational message via hook

@@ -42,14 +42,21 @@ fi
 # Read the config file
 source ${ASHS_CONFIG?}
 
-# Limit the number of threads to one if using QSUB
-if [[ $ASHS_USE_QSUB ]]; then
+# Limit the number of threads to one if using QSUB/BSUB
+if [[ $ASHS_USE_QSUB || $ASHS_USE_LSF ]]; then
   if [[ $NSLOTS ]]; then
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$NSLOTS
   else
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
   fi
   echo "ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=${ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS}"
+fi
+
+# Handle TMPDIR variable set it to a temporary directory if not specified
+if [[ $TMPDIR == "" ]]; then
+  TMPDIR=$(mktemp -d /tmp/foo.XXXXXXXXXXX)
+  mkdir -p $TMPDIR
+  echo "Temporary directory: $TMPDIR"
 fi
 
 # Determine the TMDDIR parameter for the child scripts
@@ -149,6 +156,10 @@ function qsubmit_sync()
 
   if [[ $ASHS_USE_QSUB ]]; then
     qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $MYNAME $*
+  elif [[ $ASHS_USE_LSF ]]; then
+    bsub $QOPTS -cwd "$PWD" -o "$ASHS_WORK/dump/${MYNAME}.o%J" -J "${MYNAME}" $*
+    bsub -K -o /dev/null -w "ended(${MYNAME})" /bin/sleep 1
+    /bin/sleep 0.5
   elif [[ $ASHS_USE_SLURM ]]; then
     sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -W -D . $*
   else
@@ -177,7 +188,24 @@ function qsubmit_single_array()
 
     export -f gnu_parallel_qsub
     export -f get_tmpdir
-    parallel -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
+    parallel ${QOPTS} -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
+
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM; do
+
+      JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 \
+        | awk '{print $4}')
+
+      DEPSTRING="$DEPSTRING:$JOB_ID"
+      ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+
+    done
+
+    qwait $DEPSTRING
 
   # Special handling for SLURM
   elif [[ $ASHS_USE_SLURM ]]; then
@@ -203,6 +231,12 @@ function qsubmit_single_array()
       if [[ $ASHS_USE_QSUB ]]; then
 
         qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1} $* $p1
+
+      elif [[ $ASHS_USE_LSF ]]; then
+
+        JOBNAME="${UNIQ_NAME}_${p1}"
+        bsub $QOPTS -cwd "$PWD" -o "$ASHS_WORK/dump/${JOBNAME}.o%J" -J "${JOBNAME}" $* $p1
+        /bin/sleep 0.5
 
       else
 
@@ -244,7 +278,25 @@ function qsubmit_double_array()
 
     export -f gnu_parallel_qsub
     export -f get_tmpdir
-    parallel -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
+    parallel ${QOPTS} -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
+
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM1; do
+      for p2 in $PARAM2; do
+
+        JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 $p2 \
+          | awk '{print $4}')
+
+        DEPSTRING="$DEPSTRING:$JOB_ID"
+        ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+      done
+    done
+
+    qwait $DEPSTRING
 
   # Special handling for SLURM
   elif [[ $ASHS_USE_SLURM ]]; then
@@ -273,6 +325,12 @@ function qsubmit_double_array()
 
           qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1}_${p2} $* $p1 $p2
 
+        elif [[ $ASHS_USE_LSF ]]; then
+
+          JOBNAME="${UNIQ_NAME}_${p1}_${p2}"
+          bsub $QOPTS -cwd "$PWD" -o "$ASHS_WORK/dump/${JOBNAME}.o%J" -J "${JOBNAME}" $* $p1 $p2
+          /bin/sleep 0.5
+
         else
 
           fake_qsub ${NAME}_${p1}_${p2} $* $p1 $p2
@@ -298,6 +356,8 @@ function qwait()
     qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
   elif [[ $ASHS_USE_SLURM ]]; then
     srun -d $1 $QOPTS /bin/sleep 1
+  elif [[ $ASHS_USE_LSF ]]; then
+    bsub -K -o /dev/null -w "ended($1)" /bin/sleep 1
   fi
 }
 
@@ -320,6 +380,8 @@ function ashs_subj_vars()
   local WFSL=$WORK/flirt_t2_to_t1
 
   # Main images
+  SUBJ_RAWMPRAGE=$WORK/mprage_raw.nii.gz
+  SUBJ_RAWTSE=$WORK/tse_raw.nii.gz
   SUBJ_MPRAGE=$WORK/mprage.nii.gz
   SUBJ_TSE=$WORK/tse.nii.gz
 
@@ -356,6 +418,25 @@ function ashs_subj_side_vars()
   SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP=$WORK/mprage_to_chunktemp_${side}.nii.gz
   SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK=$WORK/tse_to_chunktemp_${side}_regmask.nii.gz
   SUBJ_SIDE_TSE_NATCHUNK=$WORK/tse_native_chunk_${side}.nii.gz
+  SUBJ_SIDE_TSE_NATCHUNK_REGMASK=$WORK/tse_native_chunk_${side}_regmask.nii.gz
+  SUBJ_SIDE_MPRAGE_NATCHUNK=$WORK/mprage_to_tse_native_chunk_${side}.nii.gz
+  SUBJ_SIDE_AFF_T2T1_MAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat
+  SUBJ_SIDE_AFF_T2T1_INVMAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
+  #if [[ ! -f $SUBJ_SIDE_AFF_T2T1_MAT ]]; then
+  #  SUBJ_SIDE_AFF_T2T1_MAT=$ASHS_ROOT/bin/identity.mat
+  #fi
+  #if [[ ! -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]]; then
+  #  SUBJ_SIDE_AFF_T2T1_INVMAT=$ASHS_ROOT/bin/identity.mat
+  #fi
+
+  # Composite transformations from T2 and template
+  if [[ $ASHS_CHUNK_AFFINE == 1 ]]; then
+    SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT $SUBJ_SIDE_AFF_T2T1_INVMAT"
+    SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_SIDE_AFF_T2T1_MAT $SUBJ_AFF_T2T1_MAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+  else
+    SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT"
+    SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_AFF_T2T1_MAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+  fi
 }
 
 # ASHS atlas-specific variables
@@ -406,11 +487,25 @@ function ashs_atlas_side_vars()
   if [[ $ATLAS_MODE -eq 0 ]]; then
     TDIR=$ASHS_ATLAS/train/train${tid} 
     ATLAS_T1TEMP_WARP=$TDIR/greedy_t1_to_template_${side}_warp.nii.gz
+    # Variables with the additional affine registration between modalities
+    ATLAS_SIDE_AFF_T2T1_MAT=$TDIR/greedy_t2_to_t1_chunk_${side}.mat
+    ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/greedy_t2_to_t1_chunk_${side}_inv.mat
   else
     TDIR=$ASHS_WORK/atlas/${tid}
     ATLAS_T1TEMP_WARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz
     ATLAS_T1TEMP_INVWARP=$TDIR/ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz
+    # Variables with the additional affine registration between modalities
+    ATLAS_SIDE_AFF_T2T1_MAT=$TDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat
+    ATLAS_SIDE_AFF_T2T1_INVMAT=$TDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
   fi
+
+  if [[ ! -f $ATLAS_SIDE_AFF_T2T1_MAT ]]; then
+    ATLAS_SIDE_AFF_T2T1_MAT=$ASHS_ROOT/bin/identity.mat
+  fi
+  if [[ ! -f $ATLAS_SIDE_AFF_T2T1_INVMAT ]]; then
+    ATLAS_SIDE_AFF_T2T1_INVMAT=$ASHS_ROOT/bin/identity.mat
+  fi
+
 
   # Composite transformations from T1 and template
   ATLAS_T1TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT"
@@ -428,6 +523,10 @@ function ashs_atlas_side_vars()
 
   # Atlas segmentations in native space
   ATLAS_SEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
+
+  # Variables with the additional affine registration between modalities
+  ATLAS_SIDE_T2TEMP_TRAN="$ATLAS_T1TEMP_WARP $ATLAS_AFF_T1TEMP_MAT $ATLAS_AFF_T2T1_INVMAT $ATLAS_SIDE_AFF_T2T1_INVMAT"
+  ATLAS_SIDE_T2TEMP_INVTRAN="$ATLAS_SIDE_AFF_T2T1_MAT $ATLAS_AFF_T2T1_MAT $ATLAS_AFF_T1TEMP_INVMAT $ATLAS_T1TEMP_INVWARP"
 }
 
 
@@ -474,7 +573,7 @@ function ashs_align_t1t2()
       fi
 
       # Use greedy affine mode to perform registration 
-      greedy -d 3 -a -dof 6 -m MI -n 100x100x10 \
+      greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m MI -n 100x100x10 \
         -i $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
         ${INIT_RIGID} \
         -o $SUBJ_AFF_T2T1_MAT 
@@ -521,46 +620,66 @@ function ashs_ants_pairwise()
 
       # T1 has a zero weight
       local METRIC_TERM="-i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP"
+
+    elif [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print ($1 == 1.0)}') -eq 1 ]]; then
+
+      # T1 has 1.0 weight (use T1 only)
+      local METRIC_TERM="-i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
       
     else
 
       # T1 has non-zero weight
       local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print (1.0 - $1)}')
-      local METRIC_TERM="\
-        -w $T2WGT \
-        -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
-        -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
-        -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
+      local METRIC_TERM="-w $T2WGT \
+         -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
+         -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
+         -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
     fi 
 
     # Perform greedy affine registration with mask and NCC metric
-    time greedy -d 3 -a \
+    time greedy -d 3 $ASHS_GREEDY_THREADS -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
       -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER -float 
 
     # Perform greedy deformable registration with NCC metric
-    time greedy -d 3 -it $ATLAS_SUBJ_AFF_MAT \
+    time greedy -d 3 $ASHS_GREEDY_THREADS -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
-      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER -e 0.5 -float
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER \
+      -e $ASHS_PAIRWISE_ANTS_STEPSIZE -float
 
   fi
 
   # Define the resliced images
   local ATLAS_RESLICE=$WREG/atlas_to_native.nii.gz
   local ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
+  local ATLAS_MPRAGE_RESLICE=$WREG/atlas_to_native_mprage.nii.gz
 
   # Reslice the atlas into target space
-  if [[ $ASHS_SKIP && -f $ATLAS_RESLICE && -f $ATLAS_RESLICE_SEG ]]; then
+  if [[ $ASHS_SKIP && -f $ATLAS_RESLICE && -f $ATLAS_RESLICE_SEG && -f $ATLAS_MPRAGE_RESLICE ]]; then
 
     echo "Skipping reslicing into native space"
   
   else
 
     # Apply full composite warp from atlas TSE to subject TSE
-    greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
+    greedy -d 3 $ASHS_GREEDY_THREADS \
+      -rf $SUBJ_SIDE_TSE_NATCHUNK \
       -rm $ATLAS_TSE $ATLAS_RESLICE \
       -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
-      -r $SUBJ_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T2TEMP_TRAN
+      -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_SIDE_T2TEMP_TRAN
+
+    # Apply full composite warp from atlas MPRAGE to subject TSE
+    if [[ -f $ATLAS_MPRAGE ]]; then
+      greedy -d 3 -rf $SUBJ_SIDE_TSE_NATCHUNK \
+        -rm $ATLAS_MPRAGE $ATLAS_MPRAGE_RESLICE \
+        -r $SUBJ_SIDE_T2TEMP_INVTRAN $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T1TEMP_TRAN
+    fi
+
+    # This is for debugging purpose only
+    #greedy -d 3 -rf $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+    #  -rm $ATLAS_MPRAGE $WREG/atlas_to_native_mprage_template.nii.gz \
+    #  -r $ATLAS_SUBJ_WARP $ATLAS_SUBJ_AFF_MAT $ATLAS_T1TEMP_TRAN
+
 
   fi
 
@@ -610,25 +729,90 @@ function ashs_reslice_to_template()
         -r $SUBJ_T2TEMP_TRAN
 
       # Map the mprage image to the template space
-      greedy -d 3 -rf $REFSPACE \
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $REFSPACE \
         -rm $SUBJ_MPRAGE $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP \
         -r $SUBJ_T1TEMP_TRAN
 
       # Create a custom mask for the ASHS_TSE image
       c3d $SUBJ_SIDE_TSE_TO_CHUNKTEMP -verbose -pim r -thresh 0.001% inf 1 0 \
         -erode 0 4x4x4 $REFSPACE -times -type uchar \
-        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK 
+        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
 
-      # Create a native-space chunk of the ASHS_TSE image 
+      # Create a native-space chunk of the ASHS_TSE image
       greedy -d 3 -rf $SUBJ_TSE \
         -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
         -r $SUBJ_T2TEMP_INVTRAN
 
-      # Notice that we pad a little in the z-direction. This is to make sure that 
-      # we get all the slices in the image, otherwise there will be problems with 
+      # Notice that we pad a little in the z-direction. This is to make sure that
+      # we get all the slices in the image, otherwise there will be problems with
       # the voting code.
       c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
         $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
+
+      # Perform additional alignment between the two modalities for each side
+      # using the chunk images whole-brian if specified.
+      # This is for MTL segmentation because whole-brain rigid registration has trouble 
+      # in registering MTL structures of each side well.
+      if [[ $ASHS_SKIP_CHUNK_AFFINE == 1 && \
+            -f $SUBJ_SIDE_AFF_T2T1_MAT && \
+            -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]];
+      then
+        echo "Skipping additional affine registration for $side"
+      else
+
+        if [[ $ASHS_CHUNK_AFFINE == 1 ]]; then
+          greedy -d 3 $ASHS_GREEDY_THREADS \
+            -rf $SUBJ_SIDE_TSE_NATCHUNK \
+            -rm $SUBJ_MPRAGE $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
+            -r $SUBJ_AFF_T2T1_MAT
+          greedy -d 3 $ASHS_GREEDY_THREADS \
+            -a -dof 12 -m MI -n 20 \
+            -i $SUBJ_SIDE_TSE_NATCHUNK \
+               $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
+            -o $SUBJ_SIDE_AFF_T2T1_MAT
+          c3d_affine_tool $SUBJ_SIDE_AFF_T2T1_MAT -inv \
+             -o $SUBJ_SIDE_AFF_T2T1_INVMAT
+        else
+          # Use identity matrix for additional affine registration
+          cp $ASHS_ROOT/bin/identity.mat $SUBJ_SIDE_AFF_T2T1_INVMAT 
+          cp $ASHS_ROOT/bin/identity.mat $SUBJ_SIDE_AFF_T2T1_MAT
+        fi
+
+      fi 
+      
+      # remove TSE to chunktemp images
+      rm -f $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+            $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+  
+      # Map the TSE image to the template space
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $REFSPACE \
+        -rm $SUBJ_TSE $SUBJ_SIDE_TSE_TO_CHUNKTEMP \
+        -r $SUBJ_SIDE_T2TEMP_TRAN
+
+      # refine a custom mask for the ASHS_TSE image
+      c3d $SUBJ_SIDE_TSE_TO_CHUNKTEMP -verbose -pim r -thresh 0.001% inf 1 0 \
+        -erode 0 4x4x4 $REFSPACE -times -type uchar \
+        -o $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK
+
+      # refine a custom mask for the ASHS_TSE image
+      greedy -d 3 $ASHS_GREEDY_THREADS \
+        -rf $SUBJ_TSE \
+        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
+        -r $SUBJ_SIDE_T2TEMP_INVTRAN 
+
+      # Notice that we pad a little in the z-direction. This is to make sure that
+      # we get all the slices in the image, otherwise there will be problems with
+      # the voting code.
+      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
+        $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
+
+      # Resample MPRAGE to TSE space of each side
+      greedy -d 3 $ASHS_GREEDY_THREADS\
+        -rf $SUBJ_SIDE_TSE_NATCHUNK \
+        -rm $SUBJ_MPRAGE $SUBJ_SIDE_MPRAGE_NATCHUNK \
+        -r $SUBJ_SIDE_AFF_T2T1_MAT $SUBJ_AFF_T2T1_MAT \
 
     fi
 
@@ -898,31 +1082,31 @@ function ashs_template_single_reg()
   if [[ $DO_RIGID -eq 1 ]]; then
 
     # Perform affine registration to template
-    time greedy -d 3 \
+    time greedy -d 3  $ASHS_GREEDY_THREADS \
       -a -i $TEMPLATE $MPRAGE -o $RIGM \
       -ia $INIT -m NCC 2x2x2 \
       -n 60x20x0 -dof 6
 
     # Reslice to template
-    greedy -d 3 -float \
+    greedy -d 3 $ASHS_GREEDY_THREADS -float \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $RIGM
 
   else
 
     # Perform affine registration to template
-    time greedy -d 3 \
+    time greedy -d 3 $ASHS_GREEDY_THREADS \
       -a -i $TEMPLATE $MPRAGE -o $AFFM \
       -ia $INIT -m NCC 2x2x2 \
       -n 60x20x0
     
     # Perform deformable registration to template
-    time greedy -d 3 \
+    time greedy -d 3 $ASHS_GREEDY_THREADS \
       -i $TEMPLATE $MPRAGE -o $WARP \
       -it $AFFM -m NCC 2x2x2 \
       -n $ASHS_TEMPLATE_ANTS_ITER
 
     # Reslice to template
-    greedy -d 3 \
+    greedy -d 3 $ASHS_GREEDY_THREADS \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $WARP $AFFM
 
   fi
@@ -935,7 +1119,7 @@ function ashs_template_reslice_seg()
   local TEMPLATE_DIR=$ASHS_WORK/template_build
 
   # Reslice the segmentation into the template space
-  greedy -d 3 \
+  greedy -d 3 $ASHS_GREEDY_THREADS \
     -rf $TEMPLATE_DIR/atlastemplate.nii.gz \
     -ri LABEL 0.2vox \
     -rm $ASHS_WORK/atlas/${id}/seg_${side}.nii.gz \
@@ -969,6 +1153,7 @@ function ashs_template_side_roi()
   # Average the segmentations and create a target ROI with desired resolution
   c3d \
     $CMDLINE \
+    -type double \
     -scale $(echo $N | awk '{print 1.0 / $1}') \
     -as M -thresh $ASHS_TEMPLATE_MASK_THRESHOLD inf 1 0 \
     -o $TEMPLATE_DIR/meanseg_${side}.nii.gz -dilate 1 ${ASHS_TEMPLATE_ROI_DILATION} \
@@ -1003,7 +1188,7 @@ function ashs_template_pairwise_rigid()
       local COST=$WDIR/ncc_${FIX_ID}_${MOV_ID}.txt
 
       # Perform greedy registration
-      greedy -d 3 -a -dof 6 -m NCC 2x2x2 \
+      greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m NCC 2x2x2 \
         -i $FIX_IMG $MOV_IMG \
         -o $RMAT -ia-id -n 40 | tee $TMPDIR/reg.txt
 
@@ -1140,7 +1325,7 @@ function ashs_atlas_resample_tse_subj()
   c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT
 
   # And we need to generate the inverse of the template warp
-  greedy -d 3 \
+  greedy -d 3 $ASHS_GREEDY_THREADS \
     -invexp 4 \
     -iw $SUBJ_T1TEMP_WARP $SUBJ_T1TEMP_INVWARP
 
@@ -1228,6 +1413,7 @@ function ashs_atlas_organize_one()
 
   # Copy the full ASHS_TSE (fix this later!)
   cp -av $IDIR/tse.nii.gz $ODIR/
+  cp -av $IDIR/mprage.nii.gz $ODIR/
 
   # Copy the stuff we need into the atlas directory
   for side in $SIDES; do
@@ -1240,6 +1426,8 @@ function ashs_atlas_organize_one()
       $IDIR/tse_to_chunktemp_${side}_regmask.nii.gz \
       $IDIR/mprage_to_chunktemp_${side}.nii.gz \
       $IDIR/seg_${side}.nii.gz \
+      $IDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat \
+      $IDIR/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat \
       $ODIR/
 
     # Copy the transformation to the template space. We only care about
@@ -1309,11 +1497,11 @@ function ashs_atlas_organize_final()
   # Generate a brain mask for the template
   export FSLOUTPUTTYPE=NIFTI_GZ
   cd $FINAL/template
-  bet2 template.nii.gz template_bet -m -v 
+  bet2 template.nii.gz template_bet -m -v
+  cd $ASHS_WORK 
 }
 
-
-# Organize cross-validation directories for running cross-validation experiments
+# Organize cross-validation directories for running cross-validation experiments using qsubmit_single_array so that GNU parallel can be used
 function ashs_atlas_organize_xval()
 {
   # Training needs to be performed separately for the cross-validation experiments and for the actual atlas
@@ -1338,6 +1526,7 @@ function ashs_atlas_organize_xval()
   done
 
   # Organize the directories
+  IDFULLLIST=""
   for ((i=1; i<=$NXVAL; i++)); do
 
     # The x-validation ID
@@ -1391,25 +1580,45 @@ function ashs_atlas_organize_xval()
       local MYATL=$ASHS_WORK/atlas/$testid/
 
       # Populate the critical results to avoid having to run registrations twice
-      
+
       mkdir -p $XVSUBJ/affine_t1_to_template $XVSUBJ/ants_t1_to_temp $XVSUBJ/flirt_t2_to_t1
 
-      for fn in affine_t1_to_template/t1_to_template_affine.mat \
-        affine_t1_to_template/t1_to_template_affine_inv.mat \
-        ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz \
+      for fn in ants_t1_to_temp/greedy_t1_to_template_warp.nii.gz \
         ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz \
         flirt_t2_to_t1/flirt_t2_to_t1.mat \
         flirt_t2_to_t1/flirt_t2_to_t1_inv.mat
       do
         ln -sf $MYATL/$fn $XVSUBJ/$fn
-      done  
+      done
+
+      for fn in affine_t1_to_template/t1_to_template_affine.mat \
+        affine_t1_to_template/t1_to_template_affine_inv.mat
+      do
+        cp $MYATL/$fn $XVSUBJ/$fn
+      done
+
+      # Add some additional links to compatable with ashs_main.sh
+      cp $XVSUBJ/affine_t1_to_template/t1_to_template_affine.mat \
+         $XVSUBJ/affine_t1_to_template/greedy_t1_to_template.mat
+      cp $XVSUBJ/affine_t1_to_template/t1_to_template_affine_inv.mat \
+         $XVSUBJ/affine_t1_to_template/greedy_t1_to_template_inv.mat
+
+      # link additional affine registration for each side
+      for side in $SIDES; do
+        for fn in flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat \
+          flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
+        do
+          ln -sf $MYATL/$fn $XVSUBJ/$fn
+        done
+      done
+
 
       # We can also reuse the atlas-to-target stuff
       myidx=0
       for tid in $TRAIN; do
         for side in $SIDES; do
 
-          local tdir=$XVSUBJ/multiatlas/tseg_${side}_train$(printf %03d $myidx)  
+          local tdir=$XVSUBJ/multiatlas/tseg_${side}_train$(printf %03d $myidx)
           mkdir -p $tdir
 
           local sdir=$MYATL/pairwise/tseg_${side}_train${tid}
@@ -1421,26 +1630,61 @@ function ashs_atlas_organize_xval()
         myidx=$((myidx+1))
       done
 
+      # organize a list of IDFULL
+      IDFULLLIST="$IDFULLLIST $IDFULL"
+
       # Do we want to run a substage for cross-validation
-      local STGCMD=""
-      if [[ $XVAL_STAGE_SPEC ]]; then
-        STGCMD="-s $XVAL_STAGE_SPEC"
-      fi
+      #local STGCMD=""
+      #if [[ $XVAL_STAGE_SPEC ]]; then
+      #  STGCMD="-s $XVAL_STAGE_SPEC"
+      #fi
 
       # Now, we can launch the ashs_main segmentation for this subject!
-      qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${IDFULL}" \
-        $ASHS_ROOT/bin/ashs_main.sh \
-          -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
-          -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz" \
-          $STGCMD
+      #qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N "ashs_xval_${IDFULL}" \
+      #  $ASHS_ROOT/bin/ashs_main.sh \
+      #    -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
+      #    -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz" \
+      #    $STGCMD
 
     done
 
   done
 
+  # submit jobs to run xval
+  qsubmit_single_array "ashs_xval" "${IDFULLLIST[*]}" \
+    $ASHS_ROOT/bin/ashs_function_qsub.sh \
+    ashs_atlas_run_xval
+
   # Wait for it all to be done
-  qwait "ashs_xval_*"
+  #qwait "ashs_xval_*"
 }
+
+function ashs_atlas_run_xval()
+{
+  local IDFULL=${1?}
+
+  # get XID and testid
+  local XID=$(echo $IDFULL | awk -F '_test_' '{print $1}')
+  local testid=$(echo $IDFULL | awk -F '_test_' '{print $2}')
+
+  # specify directories
+  local XVSUBJ=$ASHS_WORK/xval/${XID}/test/$IDFULL
+  local XVATLAS=$ASHS_WORK/xval/${XID}/atlas
+  local MYATL=$ASHS_WORK/atlas/$testid/
+
+  # Do we want to run a substage for cross-validation
+  local STGCMD=""
+  if [[ $XVAL_STAGE_SPEC ]]; then
+    STGCMD="-s $XVAL_STAGE_SPEC"
+  fi
+
+  # Now, we can launch the ashs_main segmentation for this subject!
+  $ASHS_ROOT/bin/ashs_main.sh \
+    -a $XVATLAS -g $MYATL/mprage.nii.gz -f $MYATL/tse.nii.gz -w $XVSUBJ -N -d \
+    -r "$MYATL/seg_left.nii.gz $MYATL/seg_right.nii.gz" \
+    $STGCMD
+}
+
 
 # This function Qsubs the bl command unless the output is already present
 function ashs_check_bl_result()

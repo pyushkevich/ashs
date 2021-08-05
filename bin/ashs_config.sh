@@ -43,6 +43,21 @@
 # in the manifest file
 ASHS_SIDES="left right"
 
+# -------------------------------------
+# ASHS preprocessing parameters
+# -------------------------------------
+#
+# ASHS provide options for non-local mean denoising and super resolution
+# upsampling (code provided by Dr. Jose Manjón http://personales.upv.es/jmanjon/).
+# Currently, the non-local mean upsampling only support postive interger upsample factors.
+# Upsample factors are specified in "lef-right (LR), anterior-posterior (AP), and superior-inferior (SI)" directions in the physical space rather than in x, y, z coordinates
+ASHS_MPRAGE_DENOISE=0
+ASHS_MPRAGE_SRUPSAMPLE=0
+ASHS_MPRAGE_SRUPSAMPLE_FACTOR="1 1 1"
+ASHS_TSE_DENOISE=0
+ASHS_TSE_SRUPSAMPLE=0
+ASHS_TSE_SRUPSAMPLE_FACTOR="1 1 1"
+
 # ---------------------------------
 # ASHS_TSE resolution-related parameters
 # ---------------------------------
@@ -71,6 +86,11 @@ ASHS_TSE_ISO_REGION_CROP="20x20x0% 60x60x100%"
 # calling ASHS with the -N flag (to not rerun existing registrations)
 ASHS_FLIRT_MULTIMODAL_OPTS="-searchrx -5 5 -searchry -5 5 -searchrz -5 5 -coarsesearch 3 -finesearch 1 -searchcost normmi"
 
+# These are the flags for the additional affine registration between modalities.
+# The purpose of additional affine registration is to take care the residule misalignment
+# of each side (mainly for MTL segmentation). This is by default disabled.
+ASHS_CHUNK_AFFINE=0
+ASHS_SKIP_CHUNK_AFFINE=1
 
 # ------------------------------------------------
 # ASHS_MPRAGE template creation/registration parameters
@@ -108,7 +128,6 @@ ASHS_TEMPLATE_TARGET_RESOLUTION="0.4688x0.4688x0.4688mm"
 # and set a threshold. When there are lots of atlases, 0.5 is reasonable, but for
 # smaller atlas sets, this should be reduced
 ASHS_TEMPLATE_MASK_THRESHOLD=0.5
-
 
 # -----------------------------
 # Histogram matching parameters
