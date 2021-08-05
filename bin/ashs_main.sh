@@ -59,8 +59,8 @@ function usage()
 		                    If you are doing a lot of segmentations and have SGE, it is better to 
 		                    run each segmentation (ashs_main) in a separate SGE job, rather than use the -q flag. 
 		                    The -q flag is best for when you have only a few segmentations and want them to run fast.
-                  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
-                                    have GNU parallel installed.
+		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
+		                    have GNU parallel installed.
 		  -S                Use SLURM instead of SGE, LSF or GNU parallel
 		  -l                Use LSF instead of SGE, SLURM or GNU parallel
 		  -q OPTS           Pass in additional options to SGE/SLURM/LSF/GNU Parallel. If -S -B or -P not specified
@@ -69,9 +69,9 @@ function usage()
 		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -r files          Compare segmentation results with a reference segmentation. The parameter
 		                    files should consist of two nifti files in quotation marks:
-
+		                    
 		                      -r "ref_seg_left.nii.gz ref_seg_right.nii.gz"
-
+		                    
 		                    The results will include overlap calculations between different
 		                    stages of the segmentation and the reference segmentation. Note that the
 		                    comparison takes into account the heuristic rules specified in the altas, so
@@ -101,15 +101,15 @@ function usage()
 		  5:                bootstrap segmentation using voting
 		  6:                segmentation Q/A
 		  7:                volumes and statistics
-
+		                    
 		Environment Variables:
 		  ASHS_ROOT         Path to the ASHS root directory
 		  ASHS_HOOK_XXX     See documentation for -H above
-
+		                    
 		Misc Notes:
 		  The ASHS_TSE image slice direction should be z. In other words, the dimension
 		  of ASHS_TSE image should be 400x400x30 or something like that, not 400x30x400
-
+		                    
 		SGE/LSF/SLURM/GNU Parallel Options:
 		  You can have detailed control over SGE/LSF/SLURM/GNU Parallel options by passing a custom shell script to the -z
 		  option. ASHS will call this shell script with the working directory as the first parameter
@@ -150,6 +150,9 @@ unset ASHS_USE_PARALLEL ASHS_USE_SLURM ASHS_USE_LSF
 # Whether using Parallel, SGE or SLURM or LSF
 unset ASHS_USE_SOME_BATCHENV
 
+# Whether using Parallel, SGE or SLURM
+unset ASHS_USE_SOME_BATCHENV
+
 # Set the default hook script - which does almost nothing
 unset ASHS_USE_CUSTOM_HOOKS
 
@@ -157,7 +160,7 @@ unset ASHS_USE_CUSTOM_HOOKS
 unset ASHS_SPECIAL_ACTION
 
 # Read the options
-while getopts "g:f:w:s:a:q:I:C:r:z:m:t:HNGTdhVQPMBl" opt; do
+while getopts "g:f:w:s:a:q:I:C:r:z:m:t:HNGTdhVQPSMBl" opt; do
   case $opt in
 
     a) ATLAS=$(dereflink $OPTARG);;
@@ -284,19 +287,19 @@ fi
 
 # Check that qsub and bsub are not both on
 if [[ $ASHS_USE_LSF && $ASHS_USE_QSUB ]]; then
-  echo "Cannot use LSF (-L) and SGE (-Q) at the same time"
+  echo "Cannot use LSF (-l) and SGE (-Q) at the same time"
   exit -2
 fi
 
 # Check that parallel and bsub are not both on
 if [[ $ASHS_USE_LSF && $ASHS_USE_PARALLEL ]]; then
-  echo "Cannot use LSF (-L) and Parallel (-P) at the same time"
+  echo "Cannot use LSF (-l) and Parallel (-P) at the same time"
   exit -2
 fi
 
 # Check that SLURM and bsub are not both on
 if [[ $ASHS_USE_LSF && $ASHS_USE_SLURM ]]; then
-  echo "Cannot use LSF (-L) and SLURM (-S) at the same time"
+  echo "Cannot use LSF (-l) and SLURM (-S) at the same time"
   exit -2
 fi
 
@@ -361,7 +364,7 @@ elif [[ $ASHS_USE_SLURM ]]; then
   ASHS_USE_SOME_BATCHENV=1
 elif [[ $ASHS_USE_LSF ]]; then
   if [[ ! $LSF_BINDIR ]]; then
-    echo "-L flag used, but /LSF is not present." 
+    echo "-l flag used, but /LSF is not present." 
   else
     CNAME="LSF"
     ASHS_USE_SOME_BATCHENV=1
@@ -384,6 +387,14 @@ if [[ $ASHS_USE_SOME_BATCHENV ]]; then
   else
     echo "Using $CNAME with default options"
   fi
+elif [[ $ASHS_USE_PARALLEL ]]; then
+  echo "Using GNU parallel"
+elif [[ $ASHS_USE_LSF ]]; then
+  echo "Using LSF"
+elif [[ $ASHS_USE_SLURM ]]; then
+  echo "Using SLURM"
+else
+  echo "Not using SGE or GNU parallel"
 fi
 
 # Check the atlas location
@@ -463,8 +474,12 @@ export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFI
 export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS ASHS_GREEDY_THREADS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
+<<<<<<< HEAD
 export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB ASHS_USE_SLURM 
 export ASHS_USE_LSF ASHS_USE_PARALLEL
+=======
+export ASHS_NO_BOOTSTRAP ASHS_USE_QSUB ASHS_USE_SLURM
+>>>>>>> fastashs
 
 # List of training atlases 
 TRIDS=$(for((i = 0; i < $ASHS_ATLAS_N; i++)); do echo $(printf "%03i" $i); done)

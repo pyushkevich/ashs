@@ -207,6 +207,23 @@ function qsubmit_single_array()
 
     qwait $DEPSTRING
 
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM; do
+      
+      JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 \
+        | awk '{print $4}')
+
+      DEPSTRING="$DEPSTRING:$JOB_ID"
+      ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+
+    done
+
+    qwait $DEPSTRING
+
   else
 
     for p1 in $PARAM; do
@@ -271,6 +288,24 @@ function qsubmit_double_array()
     for p1 in $PARAM1; do
       for p2 in $PARAM2; do
 
+        JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 $p2 \
+          | awk '{print $4}')
+
+        DEPSTRING="$DEPSTRING:$JOB_ID"
+        ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+      done
+    done
+
+    qwait $DEPSTRING
+
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM1; do
+      for p2 in $PARAM2; do
+      
         JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 $p2 \
           | awk '{print $4}')
 
@@ -1091,7 +1126,7 @@ function ashs_template_reslice_seg()
     -r \
       $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz \
       $TEMPLATE_DIR/atlas_${id}_to_template_affine.mat \
-      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat
+      $ASHS_WORK/atlas/$id/flirt_t2_to_t1/flirt_t2_to_t1.mat,-1
 }
 
 function ashs_template_side_roi()
