@@ -1326,7 +1326,6 @@ function ashs_atlas_resample_tse_subj()
 
   # And we need to generate the inverse of the template warp
   greedy -d 3 $ASHS_GREEDY_THREADS \
-    -invexp 4 \
     -iw $SUBJ_T1TEMP_WARP $SUBJ_T1TEMP_INVWARP
 
   cp -av $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz $ADIR/
