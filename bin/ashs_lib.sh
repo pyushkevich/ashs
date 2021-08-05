@@ -639,13 +639,13 @@ function ashs_ants_pairwise()
     # Perform greedy affine registration with mask and NCC metric
     time greedy -d 3 $ASHS_GREEDY_THREADS -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
-      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER -float 
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER 
 
     # Perform greedy deformable registration with NCC metric
     time greedy -d 3 $ASHS_GREEDY_THREADS -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
       -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER \
-      -e $ASHS_PAIRWISE_ANTS_STEPSIZE -float
+      -e $ASHS_PAIRWISE_ANTS_STEPSIZE 
 
   fi
 
@@ -1088,7 +1088,7 @@ function ashs_template_single_reg()
       -n 60x20x0 -dof 6
 
     # Reslice to template
-    greedy -d 3 $ASHS_GREEDY_THREADS -float \
+    greedy -d 3 $ASHS_GREEDY_THREADS \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $RIGM
 
   else
