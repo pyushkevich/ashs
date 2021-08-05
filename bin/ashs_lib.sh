@@ -42,14 +42,21 @@ fi
 # Read the config file
 source ${ASHS_CONFIG?}
 
-# Limit the number of threads to one if using QSUB
-if [[ $ASHS_USE_QSUB ]]; then
+# Limit the number of threads to one if using QSUB/BSUB
+if [[ $ASHS_USE_QSUB || $ASHS_USE_LSF ]]; then
   if [[ $NSLOTS ]]; then
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$NSLOTS
   else
     export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=1
   fi
   echo "ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=${ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS}"
+fi
+
+# Handle TMPDIR variable set it to a temporary directory if not specified
+if [[ $TMPDIR == "" ]]; then
+  TMPDIR=$(mktemp -d /tmp/foo.XXXXXXXXXXX)
+  mkdir -p $TMPDIR
+  echo "Temporary directory: $TMPDIR"
 fi
 
 # Determine the TMDDIR parameter for the child scripts
@@ -149,6 +156,12 @@ function qsubmit_sync()
 
   if [[ $ASHS_USE_QSUB ]]; then
     qsub $QOPTS -sync y -j y -o $ASHS_WORK/dump -cwd -V -N $MYNAME $*
+  elif [[ $ASHS_USE_LSF ]]; then
+    bsub $QOPTS -cwd "$PWD" -o "$ASHS_WORK/dump/${MYNAME}.o%J" -J "${MYNAME}" $*
+    bsub -K -o /dev/null -w "ended(${MYNAME})" /bin/sleep 1
+    /bin/sleep 0.5
+  elif [[ $ASHS_USE_SLURM ]]; then
+    sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -W -D . $*
   else
     fake_qsub $MYNAME $*
   fi
@@ -175,7 +188,24 @@ function qsubmit_single_array()
 
     export -f gnu_parallel_qsub
     export -f get_tmpdir
-    parallel ${ASHS_PARALLEL_OPTS} -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
+    parallel ${QOPTS} -u gnu_parallel_qsub ${NAME}_{} $* {} ::: $PARAM
+
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM; do
+
+      JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 \
+        | awk '{print $4}')
+
+      DEPSTRING="$DEPSTRING:$JOB_ID"
+      ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+
+    done
+
+    qwait $DEPSTRING
 
   else
 
@@ -184,6 +214,12 @@ function qsubmit_single_array()
       if [[ $ASHS_USE_QSUB ]]; then
 
         qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1} $* $p1
+
+      elif [[ $ASHS_USE_LSF ]]; then
+
+        JOBNAME="${UNIQ_NAME}_${p1}"
+        bsub $QOPTS -cwd "$PWD" -o "$ASHS_WORK/dump/${JOBNAME}.o%J" -J "${JOBNAME}" $* $p1
+        /bin/sleep 0.5
 
       else
 
@@ -195,10 +231,10 @@ function qsubmit_single_array()
 
     done
 
-  fi
+    # Wait for the jobs to be done
+    qwait "${UNIQ_NAME}_*"
 
-  # Wait for the jobs to be done
-  qwait "${UNIQ_NAME}_*"
+  fi
 }
 
 
@@ -225,7 +261,25 @@ function qsubmit_double_array()
 
     export -f gnu_parallel_qsub
     export -f get_tmpdir
-    parallel ${ASHS_PARALLEL_OPTS} -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
+    parallel ${QOPTS} -u "gnu_parallel_qsub ${NAME}_{1}_{2} $* {1} {2}" ::: $PARAM1 ::: $PARAM2
+
+  # Special handling for SLURM
+  elif [[ $ASHS_USE_SLURM ]]; then
+
+    # Launch separate jobs
+    local DEPSTRING="afterany"
+    for p1 in $PARAM1; do
+      for p2 in $PARAM2; do
+
+        JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 $p2 \
+          | awk '{print $4}')
+
+        DEPSTRING="$DEPSTRING:$JOB_ID"
+        ASHS_JOB_INDEX=$((ASHS_JOB_INDEX+1))
+      done
+    done
+
+    qwait $DEPSTRING
 
   else
 
@@ -235,6 +289,12 @@ function qsubmit_double_array()
         if [[ $ASHS_USE_QSUB ]]; then
 
           qsub $QOPTS -j y -o $ASHS_WORK/dump -cwd -V -N ${UNIQ_NAME}_${p1}_${p2} $* $p1 $p2
+
+        elif [[ $ASHS_USE_LSF ]]; then
+
+          JOBNAME="${UNIQ_NAME}_${p1}_${p2}"
+          bsub $QOPTS -cwd "$PWD" -o "$ASHS_WORK/dump/${JOBNAME}.o%J" -J "${JOBNAME}" $* $p1 $p2
+          /bin/sleep 0.5
 
         else
 
@@ -247,10 +307,10 @@ function qsubmit_double_array()
       done
     done
 
-  fi
+    # Wait for the jobs to be done
+    qwait "${UNIQ_NAME}_*"
 
-  # Wait for the jobs to be done
-  qwait "${UNIQ_NAME}_*"
+  fi
 }
 
 
@@ -259,6 +319,10 @@ function qwait()
 {
   if [[ $ASHS_USE_QSUB ]]; then
     qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
+  elif [[ $ASHS_USE_SLURM ]]; then
+    srun -d $1 $QOPTS /bin/sleep 1
+  elif [[ $ASHS_USE_LSF ]]; then
+    bsub -K -o /dev/null -w "ended($1)" /bin/sleep 1
   fi
 }
 
@@ -323,16 +387,21 @@ function ashs_subj_side_vars()
   SUBJ_SIDE_MPRAGE_NATCHUNK=$WORK/mprage_to_tse_native_chunk_${side}.nii.gz
   SUBJ_SIDE_AFF_T2T1_MAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}.mat
   SUBJ_SIDE_AFF_T2T1_INVMAT=$WORK/flirt_t2_to_t1/greedy_t2_to_t1_chunk_${side}_inv.mat
-  if [[ ! -f $SUBJ_SIDE_AFF_T2T1_MAT ]]; then
-    SUBJ_SIDE_AFF_T2T1_MAT=$ASHS_ROOT/bin/identity.mat
-  fi
-  if [[ ! -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]]; then
-    SUBJ_SIDE_AFF_T2T1_INVMAT=$ASHS_ROOT/bin/identity.mat
-  fi
+  #if [[ ! -f $SUBJ_SIDE_AFF_T2T1_MAT ]]; then
+  #  SUBJ_SIDE_AFF_T2T1_MAT=$ASHS_ROOT/bin/identity.mat
+  #fi
+  #if [[ ! -f $SUBJ_SIDE_AFF_T2T1_INVMAT ]]; then
+  #  SUBJ_SIDE_AFF_T2T1_INVMAT=$ASHS_ROOT/bin/identity.mat
+  #fi
 
   # Composite transformations from T2 and template
-  SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT $SUBJ_SIDE_AFF_T2T1_INVMAT"
-  SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_SIDE_AFF_T2T1_MAT $SUBJ_AFF_T2T1_MAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+  if [[ $ASHS_CHUNK_AFFINE == 1 ]]; then
+    SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT $SUBJ_SIDE_AFF_T2T1_INVMAT"
+    SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_SIDE_AFF_T2T1_MAT $SUBJ_AFF_T2T1_MAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+  else
+    SUBJ_SIDE_T2TEMP_TRAN="$SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT"
+    SUBJ_SIDE_T2TEMP_INVTRAN="$SUBJ_AFF_T2T1_MAT $SUBJ_AFF_T1TEMP_INVMAT $SUBJ_T1TEMP_INVWARP"
+  fi
 }
 
 # ASHS atlas-specific variables

@@ -42,20 +42,22 @@ function usage()
 		  -x file           Outer cross-validation loop specification file (see below)
 		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
 		                    exists, don't run ANTS/FLIRT again
-		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. By default,
-		                    the whole ashs_train job runs in a single process. If you are on a cluster 
-		                    that has SGE, you should really use this flag
-		  -q OPTS           Pass in additional options to SGE's qsub. Also enables -Q option above.
-		  -z script         Provide a path to an executable script that will be used to retrieve SGE or
-		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
+		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. 
+		                    By defathe whole ashs_train job runs in a single process.
+		                    If you are on a cluster the whole ashs_train job runs in a single process. 
+		                    If you are on a cluster that has SGE, you should really use this flag. 
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
-		                    have GNU parallel installed.
-                  -p OPTS           Pass in additional options to GNU's parallel. Also enables -P option above..
+                                    have GNU parallel installed.
+                  -l                Use LSF instead of SGE or GNU parallel
+		  -q OPTS           Pass in additional options to SGE/LSF/GNU Parallel. If -B or -P not specified
+		                    turns on SGE.
+		  -z script         Provide a path to an executable script that will be used to retrieve SGE/LSF or
+		                    GNU parallel options for different stages of ASHS. Takes precendence over -q
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
 		  -m file           Specify transforms between T1 and T2 scans for some atlases. This is useful when
 		                    registration between the T1 and T2 images fails during training. See "transform
 		                    specification file" below.
-                  -t threads        Specify number of parallel threads the greedy runs
+		  -t threads        Specify number of parallel threads the greedy runs
 		  -S integer        Specify stage(s) for cross-validation. Only useful if you need to rerun the 
 		                    cross-validation and want to run just a subset of stages. For developers mostly.
 		  -V                Display version information and exit
@@ -123,10 +125,10 @@ function usage()
 		  automatic T2/T1 registration. Specify this only for subjects where automatic T2/T1
 		  registration fails.
 		
-		SGE Options:
-		  You can have detailed control over SGE options by passing a custom shell script to the -z
+		SGE/LSF/GNU Parallel Options:
+		  You can have detailed control over SGE/LSF/GNU Parallel options by passing a custom shell script to the -z
 		  option. ASHS will call this shell script with the working directory as the first parameter
-		  and stage as the second parameter. The script should print to stdout the SGE (qsub) options
+		  and stage as the second parameter. The script should print to stdout the SGE/LSF/GNU Parallel options
 		  that should be used for this stage. This allows you to allocate resources for each stage.
 	USAGETEXT
 }
@@ -152,12 +154,15 @@ if [[ $# -lt 1 ]]; then
   exit 2
 fi
 
+# Whether using Parallel, SGE or LSF
+unset ASHS_USE_SOME_BATCHENV
+
 # Special actions (e.g., print version info, etc.)
 unset ASHS_SPECIAL_ACTION
 unset ASHS_GREEDY_THREADS
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:z:m:p:t:S:NdhVQP" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPl" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
@@ -168,10 +173,10 @@ while getopts "C:D:L:w:s:x:q:r:z:m:p:t:S:NdhVQP" opt; do
     N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
-    q) ASHS_USE_QSUB=1; ASHS_QSUB_OPTS=$OPTARG;;
-    p) ASHS_USE_PARALLEL=1; ASHS_PARALLEL_OPTS=$OPTARG;;
+    l) ASHS_USE_LSF=1;;
+    q) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_OPTS=$OPTARG;;
     t) ASHS_GREEDY_THREADS=" -threads $OPTARG ";;
-    z) ASHS_USE_QSUB=1; ASHS_QSUB_HOOK=$OPTARG;;
+    z) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_HOOK=$OPTARG;;
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
     x) ASHS_XVAL=$(dereflink $OPTARG);;
@@ -247,7 +252,19 @@ fi
 
 # Check that parallel and qsub are not both on
 if [[ $ASHS_USE_PARALLEL && $ASHS_USE_QSUB ]]; then
-  echo "Cannot use SGE (-Q) and GNU Parallel (-P) at the same time"
+  echo "Cannot use SGE/LSF (-Q) and GNU Parallel (-P) at the same time"
+  exit -2
+fi
+
+# Check that qsub and bsub are not both on
+if [[ $ASHS_USE_LSF && $ASHS_USE_QSUB ]]; then
+  echo "Cannot use LSF (-L) and SGE (-Q) at the same time"
+  exit -2
+fi
+
+# Check that parallel and bsub are not both on
+if [[ $ASHS_USE_LSF && $ASHS_USE_PARALLEL ]]; then
+  echo "Cannot use LSF (-L) and Parallel (-P) at the same time"
   exit -2
 fi
 
@@ -309,33 +326,80 @@ fi
 mkdir -p $ASHS_WORK/final
 
 # Whether we are using QSUB
+unset ASHS_USE_SOME_BATCHENV
 if [[ $ASHS_USE_QSUB ]]; then
   if [[ ! $SGE_ROOT ]]; then
     echo "-Q flag used, but SGE is not present."
     exit -1;
+  else
+    CNAME="SGE"
+    ASHS_USE_SOME_BATCHENV=1
+  fi
+elif [[ $ASHS_USE_PARALLEL ]]; then
+  CNAME="GNU parallel"
+  ASHS_USE_SOME_BATCHENV=1
+elif [[ $ASHS_USE_LSF ]]; then
+  if [[ ! $LSF_BINDIR ]]; then
+    echo "-L flag used, but /LSF is not present."
+  else
+    CNAME="LSF"
+    ASHS_USE_SOME_BATCHENV=1
+  fi
+else
+  CNAME=""
+  ASHS_USE_SOME_BATCHENV=0
+  echo "Not using SGE, LSF or GNU parallel"
+fi
+
+if [[ $ASHS_USE_SOME_BATCHENV ]]; then
+  if [[ $ASHS_QSUB_HOOK ]]; then
+    if [[ ! -f $ASHS_QSUB_HOOK ]]; then
+      echo "Parameter to -z ($ASHS_QSUB_HOOK) does not point to a file"
+      exit 2
+    fi
+    echo "Using $CNAME with callback script $ASHS_QSUB_HOOK"
+  elif [[ $ASHS_QSUB_OPTS ]]; then
+    echo "Using $CNAME with options \"$ASHS_QSUB_OPTS\""
+  else
+    echo "Using $CNAME with default options"
+  fi
+fi
+
+
+# Whether we are using QSUB
+if [[ $ASHS_USE_QSUB ]]; then
+  if [[ ! $SGE_ROOT && ! $LSF_BINDIR ]]; then
+    echo "-Q flag used, but SGE/LSF is not present."
+    exit -1;
+  elif [[ $SGE_ROOT ]]; then
+    CNAME="SGE"
+    CROOT=$SGE_ROOT
+  elif [[ $LSF_BINDIR ]]; then
+    CNAME="LSF"
+    CROOT=$LSF_BINDIR
   fi
   if [[ $ASHS_QSUB_HOOK ]]; then
     if [[ ! -f $ASHS_QSUB_HOOK ]]; then
       echo "Parameter to -z ($ASHS_QSUB_HOOK) does not point to a file"
       exit 2
     fi
-    echo "Using SGE with root $SGE_ROOT and callback script $ASHS_QSUB_HOOK"
+    echo "Using $CNAME with root $CROOT and callback script $ASHS_QSUB_HOOK"
   elif [[ $ASHS_QSUB_OPTS ]]; then 
-    echo "Using SGE with root $SGE_ROOT and options \"$ASHS_QSUB_OPTS\""
+    echo "Using $CNAME with root $CROOT and options \"$ASHS_QSUB_OPTS\""
   else
-    echo "Using SGE with root $SGE_ROOT and default options"
+    echo "Using $CNAME with root $CROOT and default options"
   fi
 elif [[ $ASHS_USE_PARALLEL ]]; then
   echo "Using GNU parallel"
 else
-  echo "Not using SGE or GNU parallel"
+  echo "Not using SGE, LSF or GNU parallel"
 fi
 
 # Run the stages of the script
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
-export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_PARALLEL_OPTS ASHS_GREEDY_THREADS
+export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_GREEDY_THREADS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
-export SIDES XVAL_STAGE_SPEC
+export SIDES XVAL_STAGE_SPEC ASHS_USE_LSF ASHS_USE_PARALLE
 
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then
@@ -381,16 +445,15 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
   echo "Starting stage $STAGE: $STAGE_TEXT"
   echo "****************************************"
 
-  # Put together qsub options for this stage
-  if [[ $ASHS_USE_QSUB ]]; then
-
+  # Put together qsub, bsub, GNU parallel options for this stage
+  if [[ $ASHS_USE_SOME_BATCHENV ]]; then
     # Is there a callback script
     if [[ $ASHS_QSUB_HOOK ]]; then
       QOPTS="$(bash $ASHS_QSUB_HOOK $ASHS_WORK $STAGE)"
-      echo "Qsub options for this stage: $QOPTS"
     else
       QOPTS="${ASHS_QSUB_OPTS}"
     fi
+    echo "$CNAME options for this stage: $QOPTS"
   fi
 
   case $STAGE in 
