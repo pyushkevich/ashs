@@ -110,7 +110,7 @@ if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
     echo "Skipping ANTS registration"
   else
     # TODO: use the right parameters!
-    time greedy -d 3\
+    time greedy -d 3 $ASHS_GREEDY_THREADS \
       -gm $TMPDIR/mask.nii.gz \
       -m NCC 2x2x2 \
       -i $TMPDIR/fixed_hw.nii.gz $TMPDIR/moving_hw.nii.gz \
@@ -125,7 +125,7 @@ if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
   ATLAS_RESLICE=$WREG/atlas_to_native.nii.gz
   ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
 
-  greedy -d 3 \
+  greedy -d 3 $ASHS_GREEDY_THREADS \
     -rm $ATLAS_TSE $ATLAS_RESLICE \
     -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
     -rf $SUBJ_SIDE_TSE_NATCHUNK \

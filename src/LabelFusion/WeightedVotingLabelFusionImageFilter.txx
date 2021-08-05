@@ -242,10 +242,16 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     }
 
   // Generate the optional weight maps
+<<<<<<< HEAD
   if(m_GenerateWeightMaps)
     {
     m_WeightMapArray.resize(n);
     m_WeightMapArrayBuffer = new float *[n];
+=======
+  m_WeightMapArray.resize(n);
+  if(m_GenerateWeightMaps)
+    {
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
     for(int i = 0; i < n; i++)
       {
       m_WeightMapArray[i] = WeightMapImage::New();
@@ -254,9 +260,25 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
       m_WeightMapArray[i]->SetBufferedRegion(this->GetOutput()->GetRequestedRegion());
       m_WeightMapArray[i]->Allocate();
       m_WeightMapArray[i]->FillBuffer(1.0f / n);
+<<<<<<< HEAD
       m_WeightMapArrayBuffer[i] = m_WeightMapArray[i]->GetBufferPointer();
       }
     }
+=======
+      }
+    }
+
+  int iter = 0;
+
+  // We need an array of absolute patch differences between target image and atlases
+  // (apd - atlas patch difference)
+  InputImagePixelType **apd = new InputImagePixelType*[n];
+  for(int i = 0; i < n; i++)
+    apd[i] = new InputImagePixelType[nPatch];
+
+  // Also an array of pointers to the segmentations of different atlases
+  const InputImagePixelType **patchSeg = new const InputImagePixelType*[n]; 
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
 
   // Create a counter map -- needed if we have weights or posteriors - so always
   m_CounterMap = PosteriorImage::New();
@@ -578,6 +600,14 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
 
     // Counter map buffer - direct access
     typename PosteriorImage::PixelType *countermap_buffer = m_CounterMap->GetBufferPointer();
+
+    // Output the weight maps if desired
+    if(m_GenerateWeightMaps)
+      {
+      IndexType idx = it.GetIndex();
+      for(int q = 0; q < n; q++)
+        m_WeightMapArray[q]->SetPixel(idx, W[q]);
+      }
 
     // Perform voting using Hongzhi's averaging scheme. Iterate over all segmentation patches
     for(unsigned int ni = 0; ni < m_NPatch; ni++)
