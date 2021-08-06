@@ -42,6 +42,13 @@ fi
 # Read the config file
 source ${ASHS_CONFIG?}
 
+# Account for older variables names in the config
+ASHS_PAIRWISE_T1_WEIGHT=${ASHS_PAIRWISE_T1_WEIGHT:-$ASHS_PAIRWISE_ANTS_T1_WEIGHT}
+ASHS_TEMPLATE_ITER=${ASHS_TEMPLATE_ITER:-$ASHS_TEMPLATE_ANTS_ITER}
+if [[ ! $ASHS_PAIRWISE_GREEDY_OPTIONS && $ASHS_PAIRWISE_ANTS_STEPSIZE ]]; then
+  ASHS_PAIRWISE_GREEDY_OPTIONS="-e $ASHS_PAIRWISE_ANTS_STEPSIZE"
+fi
+
 # Limit the number of threads to one if using QSUB/BSUB
 if [[ $ASHS_USE_QSUB || $ASHS_USE_LSF ]]; then
   if [[ $NSLOTS ]]; then
