@@ -36,7 +36,7 @@ cat <<-BLOCK1
 	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
   Skip Rigid: ${ASHS_SKIP_RIGID}
-  Skip Ants: ${ASHS_SKIP_ANTS}
+  Skip Ants: ${ASHS_SKIP_REGN}
 BLOCK1
 
 # Ensure directory structure
@@ -217,13 +217,13 @@ else
 fi
 
 # Use ANTS to warp the ASHS_MPRAGE image to the template
-if [[ $ASHS_SKIP_ANTS && -f $SUBJ_T1TEMP_WARP ]]; then
+if [[ $ASHS_SKIP_REGN && -f $SUBJ_T1TEMP_WARP ]]; then
 
     echo "SKIPPING Deformable registration"
   
 else
     
-    time greedy -d 3 $ASHS_GREEDY_THREADS -m NCC 2x2x2 -e 0.5 -n ${ASHS_TEMPLATE_ANTS_ITER} \
+    time greedy -d 3 $ASHS_GREEDY_THREADS -m NCC 2x2x2 -e 0.5 -n ${ASHS_TEMPLATE_ITER} \
       -i $TEMP_T1_FULL $SUBJ_AFF_T1TEMP_RESLICE \
       -o $SUBJ_T1TEMP_WARP \
       -oinv $SUBJ_T1TEMP_INVWARP \

@@ -99,11 +99,10 @@ ASHS_SKIP_CHUNK_AFFINE=1
 # These parameters affect registration to the template space in ashs_main and
 # template construction in ashs_train
 
-# The number of iterations for ANTS when registering ASHS_MPRAGE to the template.
+# The number of iterations when registering ASHS_MPRAGE to the template.
 # This is one of the main parameters affecting the runtime of the program,
-# since this is the only whole-brain registration performed by ASHS. See ANTS
-# documentation for the meaning of this.
-ASHS_TEMPLATE_ANTS_ITER="60x20x0"
+# since this is the only whole-brain registration performed by ASHS. 
+ASHS_TEMPLATE_ITER="60x20x0"
 
 # Number of stages for template building, total and for rigid registration
 ASHS_TEMPLATE_STAGES_TOTAL=4
@@ -160,14 +159,15 @@ ASHS_PAIRWISE_DEFORM_ITER="60x60x20"
 # The radius of the cross-correlation patch for pairwise registration
 ASHS_PAIRWISE_CROSSCORR_RADIUS="2x2x2"
 
-# The step size for ANTS
-ASHS_PAIRWISE_ANTS_STEPSIZE="0.25"
+# Additional greedy parameters for pairwise registrations, may include
+# step size (-e 0.5), smoothing (-s 2vox 0.6vox), etc.
+ASHS_PAIRWISE_GREEDY_OPTIONS="-e 1.0 -s 2.0vox 0.6vox"
 
 # The relative weight given to the T1 image in the pairwise registration
 # Setting this to 0 makes the registration only use the ASHS_TSE images, which
 # may be the best option. This has not been tested extensively. Should be 
 # a floating point number between 0 and 1
-ASHS_PAIRWISE_ANTS_T1_WEIGHT=0
+ASHS_PAIRWISE_T1_WEIGHT=0.4
 
 # The amount of smoothing applied to label images before warping them,
 # can either be in millimeters (mm) or voxels (vox)

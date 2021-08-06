@@ -60,5 +60,5 @@ mkdir -p $WREG
 # Go to the work directory
 cd $ASHS_WORK
 
-# Run ANTS with current image as fixed, training image as moving
+# Run registration with current image as fixed, training image as moving
 ashs_ants_pairwise 0

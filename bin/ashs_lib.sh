@@ -586,7 +586,7 @@ function ashs_align_t1t2()
   fi
 }
 
-# This function performs multi-modality ANTS registration between an atlas and the target image
+# This function performs multi-modality registration between an atlas and the target image
 # See below for the list of variables that should be defined.
 # Lastly, there is a parameter, whether this is being run in altas building mode (1 yes, 0 no)
 function ashs_ants_pairwise()
@@ -607,8 +607,8 @@ function ashs_ants_pairwise()
   local ATLAS_SUBJ_AFF_MAT=$WREG/greedy_atlas_to_subj_affine.mat
   local ATLAS_SUBJ_WARP=$WREG/greedy_atlas_to_subj_warp.nii.gz
 
-  # Run ANTS with current image as fixed, training image as moving
-  if [[ $ASHS_SKIP_ANTS && -f $ATLAS_SUBJ_AFF_MAT && -f $ATLAS_SUBJ_WARP ]]; then
+  # Run greedy with current image as fixed, training image as moving
+  if [[ $ASHS_SKIP_REGN && -f $ATLAS_SUBJ_AFF_MAT && -f $ATLAS_SUBJ_WARP ]]; then
 
     # If registration exists, skip this step
     echo "Skipping Greedy registration $side/$tid"
@@ -616,12 +616,12 @@ function ashs_ants_pairwise()
   else
 
     # Are we running multi-component registration
-    if [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print ($1 == 0.0)}') -eq 1 ]]; then
+    if [[ $(echo $ASHS_PAIRWISE_T1_WEIGHT | awk '{print ($1 == 0.0)}') -eq 1 ]]; then
 
       # T1 has a zero weight
       local METRIC_TERM="-i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP"
 
-    elif [[ $(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print ($1 == 1.0)}') -eq 1 ]]; then
+    elif [[ $(echo $ASHS_PAIRWISE_T1_WEIGHT | awk '{print ($1 == 1.0)}') -eq 1 ]]; then
 
       # T1 has 1.0 weight (use T1 only)
       local METRIC_TERM="-i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
@@ -629,10 +629,10 @@ function ashs_ants_pairwise()
     else
 
       # T1 has non-zero weight
-      local T2WGT=$(echo $ASHS_PAIRWISE_ANTS_T1_WEIGHT | awk '{print (1.0 - $1)}')
+      local T2WGT=$(echo $ASHS_PAIRWISE_T1_WEIGHT | awk '{print (1.0 - $1)}')
       local METRIC_TERM="-w $T2WGT \
          -i $SUBJ_SIDE_TSE_TO_CHUNKTEMP $ATLAS_SIDE_TSE_TO_CHUNKTEMP \
-         -w $ASHS_PAIRWISE_ANTS_T1_WEIGHT \
+         -w $ASHS_PAIRWISE_T1_WEIGHT \
          -i $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP $ATLAS_SIDE_MPRAGE_TO_CHUNKTEMP"
     fi 
 
@@ -645,7 +645,7 @@ function ashs_ants_pairwise()
     time greedy -d 3 $ASHS_GREEDY_THREADS -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
       -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER \
-      -e $ASHS_PAIRWISE_ANTS_STEPSIZE 
+      $ASHS_PAIRWISE_GREEDY_OPTIONS
 
   fi
 
@@ -1103,7 +1103,7 @@ function ashs_template_single_reg()
     time greedy -d 3 $ASHS_GREEDY_THREADS \
       -i $TEMPLATE $MPRAGE -o $WARP \
       -it $AFFM -m NCC 2x2x2 \
-      -n $ASHS_TEMPLATE_ANTS_ITER
+      -n $ASHS_TEMPLATE_ITER
 
     # Reslice to template
     greedy -d 3 $ASHS_GREEDY_THREADS \
@@ -1216,7 +1216,7 @@ function ashs_atlas_build_template()
     for id in ${ATLAS_ID[*]}; do echo $ASHS_WORK/atlas/${id}/mprage.nii.gz; done))
 
   # Run the template code
-  if [[ -f $TEMPLATE_DIR/atlastemplate.nii.gz && $ASHS_SKIP_ANTS ]]; then
+  if [[ -f $TEMPLATE_DIR/atlastemplate.nii.gz && $ASHS_SKIP_REGN ]]; then
     echo "Skipping template building"
   else
 
@@ -1283,7 +1283,7 @@ function ashs_atlas_build_template()
   fi
 
   # We should now map everyone's segmentation into the template to build a mask
-  if [[ $ASHS_SKIP_ANTS && \
+  if [[ $ASHS_SKIP_REGN && \
         -f $ASHS_WORK/final/template/refspace_meanseg_${side}.nii.gz && \
         -f $ASHS_WORK/final/template/refspace_mprage_${side}.nii.gz ]]
   then
@@ -1377,7 +1377,7 @@ function ashs_atlas_pairwise()
     local WREG=$ADIR/pairwise/tseg_${side}_train${tid}
     mkdir -p $WREG
 
-    # Run ANTS with current image as fixed, training image as moving
+    # Run greedy with current image as fixed, training image as moving
     ashs_ants_pairwise $ADIR $side $tid $WREG 1
 
   done

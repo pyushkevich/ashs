@@ -34,23 +34,23 @@ function usage()
 		ashs_main: automatic segmentation of hippocampal subfields
 		usage:
 		  ashs_main [options]
-
+		  
 		required options:
 		  -a dir            Location of the atlas directory. Can be a full pathname or a
 		                    relative directory name under ASHS_ROOT/data directory. 
 		  -g image          Filename of 3D (g)radient echo MRI (ASHS_MPRAGE, T1w)
 		  -f image          Filename of 2D focal (f)ast spin echo MRI (ASHS_TSE, T2w)
 		  -w path           Working/output directory
-
+		  
 		optional:
 		  -d                Enable debugging
 		  -h                Print help
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
-		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
-		                    exists, don't run ANTS/FLIRT again
-                  -G                Use template brain mask in T1 template rigid registratian
+		  -N                No overriding of registration results. If a result from an earlier run
+		                    exists, don't run greedy again.
+		  -G                Use template brain mask in T1 template rigid registratian
 		  -T                Tidy mode. Cleans up files once they are unneeded. The -N option will
-		                    have no effect in tidy mode, because ANTS/FLIRT results will be erased.
+		                    have no effect in tidy mode, because intermediate results will be erased.
 		  -I string         Subject ID (for stats output). Defaults to last word of working dir.
 		  -V                Display version information and exit
 		  -C file           Configuration file. If not passed, uses $ASHS_ROOT/bin/ashs_config.sh
@@ -141,7 +141,7 @@ fi
 
 # Clear the variables affected by the flags
 unset ATLAS ASHS_MPRAGE ASHS_TSE ASHS_WORK STAGE_SPEC
-unset ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID ASHS_T1TEMP_RIGID_MASK
+unset ASHS_SKIP_REGN ASHS_SKIP_RIGID ASHS_TIDY ASHS_SUBJID ASHS_T1TEMP_RIGID_MASK
 unset ASHS_USE_QSUB ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT ASHS_REFSEG_LIST
 unset ASHS_QSUB_OPTS ASHS_QSUB_HOOK ASHS_GREEDY_THREADS
 unset ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE
@@ -168,7 +168,7 @@ while getopts "g:f:w:s:a:q:I:C:r:z:m:t:HNGTdhVQPSMBl" opt; do
     f) ASHS_TSE=$(dereflink $OPTARG);;
     w) ASHS_WORK=$(dereflink $OPTARG);;
     s) STAGE_SPEC=$OPTARG;;
-    N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ;;
+    N) ASHS_SKIP_REGN=1; ASHS_SKIP_RIGID=1; ;;
     G) ASHS_T1TEMP_RIGID_MASK=1; ;;
     T) ASHS_TIDY=1;;
     I) ASHS_SUBJID=$OPTARG;;
@@ -470,7 +470,7 @@ fi
 SIDES="$ASHS_SIDES"
 
 # Run the stages of the script
-export ASHS_ROOT ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS ASHS_T1TEMP_RIGID_MASK
+export ASHS_ROOT ASHS_WORK ASHS_SKIP_REGN ASHS_SKIP_RIGID ASHS_SUBJID ASHS_CONFIG ASHS_ATLAS ASHS_T1TEMP_RIGID_MASK
 export ASHS_HEURISTICS ASHS_TIDY ASHS_MPRAGE ASHS_TSE ASHS_REFSEG_LEFT ASHS_REFSEG_RIGHT QOPTS ASHS_GREEDY_THREADS
 export SIDES ASHS_HOOK_SCRIPT ASHS_HOOK_DATA
 export ASHS_INPUT_T2T1_MAT ASHS_INPUT_T2T1_MODE

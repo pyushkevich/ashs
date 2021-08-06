@@ -58,5 +58,5 @@ TSEG=$TDIR/seg_${side}.nii.gz
 WREG=pairwise/tseg_${side}_train${tid}
 mkdir -p $WREG
 
-# Run ANTS with current image as fixed, training image as moving
+# Run pairwise registration with current image as fixed, training image as moving
 ashs_ants_pairwise 1

@@ -40,8 +40,8 @@ function usage()
 		  -s integer        Run only one stage (see below); also accepts range (e.g. -s 1-3)
 		  -r file           Apply heuristic rules (see below) to segmentations produced by ASHS.
 		  -x file           Outer cross-validation loop specification file (see below)
-		  -N                No overriding of ANTS/FLIRT results. If a result from an earlier run
-		                    exists, don't run ANTS/FLIRT again
+		  -N                No overriding of registration results. If a result from an earlier run
+		                    exists, don't run greedy again
 		  -Q                Use Sun Grid Engine (SGE) to schedule sub-tasks in each stage. 
 		                    By defathe whole ashs_train job runs in a single process.
 		                    If you are on a cluster the whole ashs_train job runs in a single process. 
@@ -170,7 +170,7 @@ while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPl" opt; do
     w) ASHS_WORK=$OPTARG;;
     s) STAGE_SPEC=$OPTARG;;
     S) XVAL_STAGE_SPEC=$OPTARG;;
-    N) ASHS_SKIP_ANTS=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
+    N) ASHS_SKIP_REGN=1; ASHS_SKIP_RIGID=1; ASHS_SKIP=1;;
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     l) ASHS_USE_LSF=1;;
@@ -396,7 +396,7 @@ else
 fi
 
 # Run the stages of the script
-export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_ANTS ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
+export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_REGN ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_GREEDY_THREADS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
 export SIDES XVAL_STAGE_SPEC ASHS_USE_LSF ASHS_USE_PARALLE
@@ -463,8 +463,8 @@ for ((STAGE=$STAGE_START; STAGE<=$STAGE_END; STAGE++)); do
     ashs_atlas_initialize_directory;;
 
     2)
-    # The first step is to build a template from the atlas images using the standard
-    # code in ANTS. For this, we got to copy all the atlases to a common directory
+    # The first step is to build a template from the atlas images.
+    # For this, we got to copy all the atlases to a common directory
     ashs_atlas_build_template;;
 
     3)
