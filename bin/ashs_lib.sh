@@ -639,13 +639,13 @@ function ashs_ants_pairwise()
     # Perform greedy affine registration with mask and NCC metric
     time greedy -d 3 $ASHS_GREEDY_THREADS -a \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_AFF_MAT \
-      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER -float 
+      -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_AFFINE_ITER 
 
     # Perform greedy deformable registration with NCC metric
     time greedy -d 3 $ASHS_GREEDY_THREADS -it $ATLAS_SUBJ_AFF_MAT \
       -gm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $METRIC_TERM -o $ATLAS_SUBJ_WARP \
       -m NCC $ASHS_PAIRWISE_CROSSCORR_RADIUS -n $ASHS_PAIRWISE_DEFORM_ITER \
-      -e $ASHS_PAIRWISE_ANTS_STEPSIZE -float
+      -e $ASHS_PAIRWISE_ANTS_STEPSIZE 
 
   fi
 
@@ -1036,17 +1036,18 @@ function ashs_average_images_normalized()
   # Perform average for each line
   for ((i=1;i<=$NBATCH;i++)); do
 
-    imgs=($(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1))
-    if [[ ${#imgs[*]} == 1 ]]; then
-      c3d $REFIMG $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
-        -stretch 0% 99% 0 1000  -reslice-identity \
-        -o $TMPDIR/avg_batch_$i.nii.gz
-    else
+    local BATCHINPUT=$(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1)
+    local BATCHSIZE=$(echo $BATCHINPUT | wc -w)
+
+    # Avoid batches of 1 image
+    if [[ $BATCHSIZE -gt 1 ]]; then
       c3d $REFIMG -popas R \
         $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
         -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
         -accum -add -endaccum \
         -o $TMPDIR/avg_batch_$i.nii.gz
+    else
+      cp $BATCHINPUT $TMPDIR/avg_batch_$i.nii.gz
     fi
 
   done
@@ -1087,7 +1088,7 @@ function ashs_template_single_reg()
       -n 60x20x0 -dof 6
 
     # Reslice to template
-    greedy -d 3 $ASHS_GREEDY_THREADS -float \
+    greedy -d 3 $ASHS_GREEDY_THREADS \
       -rf $TEMPLATE -rm $MPRAGE $RESLICE -r $RIGM
 
   else
@@ -1325,7 +1326,6 @@ function ashs_atlas_resample_tse_subj()
 
   # And we need to generate the inverse of the template warp
   greedy -d 3 $ASHS_GREEDY_THREADS \
-    -invexp 4 \
     -iw $SUBJ_T1TEMP_WARP $SUBJ_T1TEMP_INVWARP
 
   cp -av $TEMPLATE_DIR/atlas_${id}_to_template_warp.nii.gz $ADIR/
