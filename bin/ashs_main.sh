@@ -263,7 +263,7 @@ if [[ ! $ASHS_CONFIG ]]; then
 fi
 
 # Set some parallel environment
-if [[ $ASHS_USE_SOME_BATCHENV && ! $ASHS_USE_SLURM && ! $ASHS_USE_PARALLEL ]]; then
+if [[ $ASHS_USE_SOME_BATCHENV && ! $ASHS_USE_SLURM && ! $ASHS_USE_PARALLEL && ! $ASHS_USE_LSF ]]; then
   ASHS_USE_QSUB=1
 fi
 
