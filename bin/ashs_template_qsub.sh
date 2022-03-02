@@ -56,7 +56,7 @@ ashs_subj_vars $ASHS_WORK
 SUBJ_AFF_T1TEMP_RESLICE=$WAFF/t1_to_template_affine.nii.gz
 
 # Copy the images into the working directory
-if [[ $ASHS_MPRAGE -nt $SUBJ_RAWMPRAGE ]]; then
+if [[ $ASHS_MPRAGE -nt $SUBJ_MPRAGE || ! -f $SUBJ_MPRAGE ]]; then
   ### TODO: I took this out because it was messing up CL with old atlases!
   ### c3d $ASHS_MPRAGE -stretch 1% 99% 0 4096 -clip 0 4096 -type short -o $SUBJ_MPRAGE
   c3d $ASHS_MPRAGE -type short -o $SUBJ_RAWMPRAGE
@@ -106,7 +106,7 @@ if [[ $ASHS_MPRAGE -nt $SUBJ_RAWMPRAGE ]]; then
 
 fi
 
-if [[ $ASHS_TSE -nt $SUBJ_RAWTSE ]]; then
+if [[ $ASHS_TSE -nt $SUBJ_TSE || ! -f $SUBJ_TSE ]]; then
   ### TODO: I took this out because it was messing up CL with old atlases!
   ### c3d $ASHS_TSE -stretch 1% 99% 0 4096 -clip 0 4096 -type short -o $SUBJ_TSE 
   c3d $ASHS_TSE -type short -o $SUBJ_RAWTSE 

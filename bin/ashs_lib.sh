@@ -2391,7 +2391,12 @@ function ashs_registration_qc()
   done
 
   # Make montages
-  montage \
+  montage_font=$(montage -list font | grep "Font:" | tail -n 1 | cut -d : -f 2)
+  MONTFONTCMD=""
+  if [[ $montage_font != "" ]]; then
+    MONTFONTCMD=" -font $montage_font "
+  fi
+  montage $MONTFONTCMD \
     -tile 7x -geometry +5+5 -mode Concatenate \
     $TMPDIR/*_temp_*.png  \
     $TMPDIR/*_mprage_*.png  \
@@ -2403,7 +2408,8 @@ function ashs_registration_qc()
     $TMPDIR/qa.png
 
   mkdir -p $ASHS_WORK/qa
-  montage -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
+  montage $MONTFONTCMD \
+    -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
     $ASHS_WORK/qa/qa_registration_${side}_qa.png
 
   # Call hook script with the result as an attachment
@@ -2464,7 +2470,12 @@ function ashs_segmentation_qc()
   done
 
   # Make montages
-  montage \
+  montage_font=$(montage -list font | grep "Font:" | tail -n 1 | cut -d : -f 2)
+  MONTFONTCMD=""
+  if [[ $montage_font != "" ]]; then
+    MONTFONTCMD=" -font $montage_font "
+  fi
+  montage $MONTFONTCMD \
     -tile 7x -geometry +5+5 -mode Concatenate \
     $TMPDIR/*_tse_*.png  \
     $TMPDIR/*_mprage_*.png  \
@@ -2476,7 +2487,8 @@ function ashs_segmentation_qc()
     $TMPDIR/qa.png
 
   mkdir -p $ASHS_WORK/qa
-  montage -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
+  montage $MONTFONTCMD \
+    -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
     $ASHS_WORK/qa/qa_seg_${malfmode}_${corrmode}_${side}_qa.png
 
 
