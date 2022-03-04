@@ -133,6 +133,13 @@ function dereflink ()
   fi
 }
 
+# Convert a rel to abs path, but don't resolve links
+function abs_path() {
+  if [[ -d $(dirname "$1") ]]; then
+    echo "$(cd $(dirname "$1");pwd)/$(basename "$1")"
+  fi
+}
+
 # Print usage by default
 if [[ $# -lt 1 ]]; then
   echo "Try $0 -h for more information."
@@ -198,7 +205,7 @@ done
 if [[ ! $ASHS_ROOT ]]; then
   echo "Please set ASHS_ROOT to the ASHS root directory before running $0"
   exit -2
-elif [[ $ASHS_ROOT != $(dereflink $ASHS_ROOT) ]]; then
+elif [[ ! $ASHS_ROOT =~ $(abs_path $ASHS_ROOT)/? ]]; then
   echo "ASHS_ROOT must point to an absolute path, not a relative path"
   exit -2
 fi
