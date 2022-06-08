@@ -47,8 +47,9 @@ function usage()
 		                    If you are on a cluster the whole ashs_train job runs in a single process. 
 		                    If you are on a cluster that has SGE, you should really use this flag. 
 		  -P                Use GNU parallel to run on multiple cores on the local machine. You need to
-                                    have GNU parallel installed.
-                  -l                Use LSF instead of SGE or GNU parallel
+		                    have GNU parallel installed.
+		  -l                Use LSF instead of SGE 
+		  -u                Use SLURM instead of SGE 
 		  -q OPTS           Pass in additional options to SGE/LSF/GNU Parallel. If -B or -P not specified
 		                    turns on SGE.
 		  -z script         Provide a path to an executable script that will be used to retrieve SGE/LSF or
@@ -125,8 +126,8 @@ function usage()
 		  automatic T2/T1 registration. Specify this only for subjects where automatic T2/T1
 		  registration fails.
 		
-		SGE/LSF/GNU Parallel Options:
-		  You can have detailed control over SGE/LSF/GNU Parallel options by passing a custom shell script to the -z
+		SGE/LSF/GNU/SLURM Parallel Options:
+		  You can have detailed control over SGE/SLURM/LSF/GNU Parallel options by passing a custom shell script to the -z
 		  option. ASHS will call this shell script with the working directory as the first parameter
 		  and stage as the second parameter. The script should print to stdout the SGE/LSF/GNU Parallel options
 		  that should be used for this stage. This allows you to allocate resources for each stage.
@@ -162,7 +163,7 @@ unset ASHS_SPECIAL_ACTION
 unset ASHS_GREEDY_THREADS
 
 # Read the options
-while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPl" opt; do
+while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPlu" opt; do
   case $opt in
 
     D) ASHS_TRAIN_MANIFEST=$(dereflink $OPTARG);;
@@ -174,6 +175,7 @@ while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPl" opt; do
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     l) ASHS_USE_LSF=1;;
+    l) ASHS_USE_SLURM=1;;
     q) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_OPTS=$OPTARG;;
     t) ASHS_GREEDY_THREADS=" -threads $OPTARG ";;
     z) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_HOOK=$OPTARG;;
@@ -345,6 +347,9 @@ elif [[ $ASHS_USE_LSF ]]; then
     CNAME="LSF"
     ASHS_USE_SOME_BATCHENV=1
   fi
+elif [[ $ASHS_USE_SLURM ]]; then
+  CNAME="SLURM"
+  ASHS_USE_SOME_BATCHENV=1
 else
   CNAME=""
   ASHS_USE_SOME_BATCHENV=0
@@ -399,7 +404,7 @@ fi
 export ASHS_ROOT ASHS_BIN ASHS_WORK ASHS_SKIP_REGN ASHS_SKIP_RIGID ASHS_BIN_ANTS ASHS_SKIP
 export ASHS_BIN_FSL ASHS_CONFIG ASHS_HEURISTICS ASHS_XVAL ASHS_LABELFILE ASHS_USE_QSUB QOPTS ASHS_GREEDY_THREADS
 export ASHS_USE_PARALLEL ASHS_TRAIN_MANIFEST ASHS_TRAIN_TRANSFORM_MANIFEST
-export SIDES XVAL_STAGE_SPEC ASHS_USE_LSF ASHS_USE_PARALLE
+export SIDES XVAL_STAGE_SPEC ASHS_USE_LSF ASHS_USE_PARALLEL ASHS_USE_SLURM
 
 # Set the start and end stages
 if [[ $STAGE_SPEC ]]; then
