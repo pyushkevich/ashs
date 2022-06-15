@@ -242,16 +242,10 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     }
 
   // Generate the optional weight maps
-<<<<<<< HEAD
   if(m_GenerateWeightMaps)
     {
     m_WeightMapArray.resize(n);
     m_WeightMapArrayBuffer = new float *[n];
-=======
-  m_WeightMapArray.resize(n);
-  if(m_GenerateWeightMaps)
-    {
->>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
     for(int i = 0; i < n; i++)
       {
       m_WeightMapArray[i] = WeightMapImage::New();
@@ -260,11 +254,7 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
       m_WeightMapArray[i]->SetBufferedRegion(this->GetOutput()->GetRequestedRegion());
       m_WeightMapArray[i]->Allocate();
       m_WeightMapArray[i]->FillBuffer(1.0f / n);
-<<<<<<< HEAD
       m_WeightMapArrayBuffer[i] = m_WeightMapArray[i]->GetBufferPointer();
-      }
-    }
-=======
       }
     }
 
