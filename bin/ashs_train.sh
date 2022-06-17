@@ -120,11 +120,11 @@ function usage()
 		    ID TRANSFORM FORCE
 		
 		  where ID matches the IDs in the manifest, TRANSFORM is a linear transform between
-		  the T2 image and the T1 image (Convert3D/ITK-SNAP format) and FORCE is a flag with
-		  0 meaning that the transform should be used as the starting point for automatic
-		  T2/T1 registration and 1 meaning that the TRANSFORM should be used in place of 
-		  automatic T2/T1 registration. Specify this only for subjects where automatic T2/T1
-		  registration fails.
+		  the T2 as the fixed image and the T1 as the moving image (Convert3D/ITK-SNAP format) 
+		  and FORCE is a flag with 0 meaning that the transform should be used as the starting 
+		  point for automatic T2/T1 registration and 1 meaning that the TRANSFORM should 
+		  be used in place of automatic T2/T1 registration. Specify this only for subjects 
+		  where automatic T2/T1 registration fails.
 		
 		SGE/LSF/GNU/SLURM Parallel Options:
 		  You can have detailed control over SGE/SLURM/LSF/GNU Parallel options by passing a custom shell script to the -z
@@ -182,7 +182,7 @@ while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPlu" opt; do
     C) ASHS_CONFIG=$(dereflink $OPTARG);;
     r) ASHS_HEURISTICS=$(dereflink $OPTARG);;
     x) ASHS_XVAL=$(dereflink $OPTARG);;
-    m) ASHS_TRAIN_TRANSFORM_MANIFEST=$(dereflink OPTARG);;
+    m) ASHS_TRAIN_TRANSFORM_MANIFEST=$(dereflink $OPTARG);;
     d) set -x -e;;
     h) usage; exit 0;;
     V) ASHS_SPECIAL_ACTION=vers;;
@@ -247,8 +247,8 @@ if [[ ! -f $ASHS_LABELFILE ]]; then
   exit 1;
 fi
 
-if [[ $ASHS_TRAIN_TRANSFORM_MANIFEST && ! -f  $ASHS_TRAIN_TRANSFORM_MANIFEST ]]; then
-  echo "Missing transform override file (-m)"
+if [[ $ASHS_TRAIN_TRANSFORM_MANIFEST && ! -f $ASHS_TRAIN_TRANSFORM_MANIFEST ]]; then
+  echo "Missing transform override file (-m) "
   exit 1;
 fi
 

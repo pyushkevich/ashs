@@ -46,9 +46,9 @@ function voxel_size()
 
 # directory for the subfields (separate for different parameter values)
 if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
-  WSUB=$ASHS_WORK/bootstrap/fusion
+  MODELIST="bootstrap multiatlas"
 else
-  WSUB=$ASHS_WORK/multiatlas/fusion
+  MODELIST="multiatlas"
 fi
 
 # Final statistics output directory
@@ -68,54 +68,26 @@ LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
 # Names of segmentations
 for segtype in raw heur corr_usegray corr_nogray manual; do
   for side in $SIDES; do
+    for bootmode in $MODELIST; do
 
-    if [[ $segtype == "manual" ]]; then
-      SBC=$ASHS_WORK/refseg/refseg_${side}.nii.gz
-    else
-      SBC=$WSUB/lfseg_${segtype}_${side}.nii.gz
-    fi
+      if [[ $segtype == "manual" ]]; then
+        SBC=$ASHS_WORK/refseg/refseg_${side}.nii.gz
+        STATBASE=$WSTAT/${ASHS_SUBJID}_${side}_manual
+        if [[ $bootmode == "bootstrap" ]]; then continue; fi
+      else
+        SBC=$ASHS_WORK/${bootmode}/fusion/lfseg_${segtype}_${side}.nii.gz
+        STATBASE=$WSTAT/${ASHS_SUBJID}_${side}_${bootmode}_${segtype}
+      fi
 
-    if [[ -f $SBC ]]; then
+      if [[ -f $SBC ]]; then
 
-      # Generate the voxel and extent statistics
-      STATS=$TMPDIR/rawvols_${segtype}_${side}.txt
-      c3d $SBC -dup -lstat | tee $STATS
+        # Generate the voxel and extent statistics
+        STATS=$TMPDIR/rawvols_${segtype}_${side}.txt
+        c3d $SBC -dup -lstat | tee $STATS
 
-      # Create an output file
-      FNBODYVOL=$WSTAT/${ASHS_SUBJID}_${side}_${segtype}_volumes.txt 
-      rm -rf $FNBODYVOL
-
-      # Dump volumes into that file
-      for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
-
-        # The id of the label
-        i=${LABIDS[ilab]};
-        SUB=${LABNAMES[ilab]};
-
-        # Get the extent along z axis
-        NBODY=$(cat $STATS | awk -v id=$i '$1 == id {print $10}')
-
-        # Get the volume of this subfield
-        VSUB=$(cat $STATS | awk -v id=$i '$1 == id {print $7}')
-
-        # Write the volume information to output file
-        if [[ $NBODY ]]; then
-          echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
-        fi
-
-      done
-
-      # If there is a reference segmentation, generate overlap statistics
-      REFSEG=$ASHS_WORK/refseg/refseg_${side}.nii.gz
-      if [[ -f $REFSEG && $segtype != "manual" ]]; then
-
-        # Get the overlap statistics
-        OVLFILE=$TMPDIR/ovl_${segtype}_${side}.txt
-        c3d $REFSEG -int 0 -dup $SBC -reslice-identity -label-overlap > $OVLFILE
-
-        # Extract the statistics for each label
-        OUTOVL=$WSTAT/${ASHS_SUBJID}_${side}_${segtype}_overlap.txt
-        rm -rf $OUTOVL
+        # Create an output file
+        FNBODYVOL=${STATBASE}_volumes.txt 
+        rm -rf $FNBODYVOL
 
         # Dump volumes into that file
         for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
@@ -124,18 +96,51 @@ for segtype in raw heur corr_usegray corr_nogray manual; do
           i=${LABIDS[ilab]};
           SUB=${LABNAMES[ilab]};
 
-          # Extract the overlap
-          OVL=$(cat $OVLFILE | awk -v k=$i '$1==k && NR>4 {print $4}')
+          # Get the extent along z axis
+          NBODY=$(cat $STATS | awk -v id=$i '$1 == id {print $10}')
 
-          if [[ $OVL ]]; then
-            echo $ASHS_SUBJID $side $SUB $OVL >> $OUTOVL
+          # Get the volume of this subfield
+          VSUB=$(cat $STATS | awk -v id=$i '$1 == id {print $7}')
+
+          # Write the volume information to output file
+          if [[ $NBODY ]]; then
+            echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
           fi
 
         done
 
-      fi
+        # If there is a reference segmentation, generate overlap statistics
+        REFSEG=$ASHS_WORK/refseg/refseg_${side}.nii.gz
+        if [[ -f $REFSEG && $segtype != "manual" ]]; then
 
-    fi
+          # Get the overlap statistics
+          OVLFILE=$TMPDIR/ovl_${segtype}_${side}.txt
+          c3d $REFSEG -int 0 -dup $SBC -reslice-identity -label-overlap > $OVLFILE
+
+          # Extract the statistics for each label
+          OUTOVL=${STATBASE}_overlap.txt
+          rm -rf $OUTOVL
+
+          # Dump volumes into that file
+          for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
+
+            # The id of the label
+            i=${LABIDS[ilab]};
+            SUB=${LABNAMES[ilab]};
+
+            # Extract the overlap
+            OVL=$(cat $OVLFILE | awk -v k=$i '$1==k && NR>4 {print $4}')
+
+            if [[ $OVL ]]; then
+              echo $ASHS_SUBJID $side $SUB $OVL >> $OUTOVL
+            fi
+
+          done
+
+        fi
+
+      fi
+    done
   done
 done
 

@@ -1197,7 +1197,7 @@ function ashs_template_pairwise_rigid()
       # Perform greedy registration
       greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m NCC 2x2x2 \
         -i $FIX_IMG $MOV_IMG \
-        -o $RMAT -ia-id -n 40 | tee $TMPDIR/reg.txt
+        -o $RMAT -ia-image-centers -n 40 | tee $TMPDIR/reg.txt
 
       # Get the final cost
       cat $TMPDIR/reg.txt | grep -B 3 'Final RAS' | \
