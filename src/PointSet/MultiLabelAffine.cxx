@@ -144,7 +144,7 @@ void DebugDumpMesh(Parameters &param, vtkPolyData *p, string name)
     string filename = string("mlaffine_") + name + ".vtk";
     vtkPolyDataWriter *wr = vtkPolyDataWriter::New();
     wr->SetFileName(filename.c_str());
-    wr->SetInput(p);
+    wr->SetInputData(p);
     wr->Update();
     }
 }
@@ -194,7 +194,7 @@ void GetLabeledBoundaryMesh(LabelImageType *image, set<int> labels,
 
     // Run marching cubes on the input image
     vtkMarchingCubes *fltMarching = vtkMarchingCubes::New();
-    fltMarching->SetInput(fltImport->GetOutput());
+    fltMarching->SetInputConnection(fltImport->GetOutputPort());
     fltMarching->ComputeScalarsOff();
     fltMarching->ComputeGradientsOff();
     fltMarching->ComputeNormalsOff();
@@ -204,7 +204,7 @@ void GetLabeledBoundaryMesh(LabelImageType *image, set<int> labels,
 
     // Create the transform filter
     vtkTransformPolyDataFilter *fltTransform = vtkTransformPolyDataFilter::New();
-    fltTransform->SetInput(fltMarching->GetOutput());
+    fltTransform->SetInputConnection(fltMarching->GetOutputPort());
 
     // Compute the transform from VTK coordinates to NIFTI/RAS coordinates
     vnl_matrix_fixed<double, 4, 4> vtk2nii =
@@ -261,7 +261,7 @@ void GetLabeledBoundaryMesh(LabelImageType *image, set<int> labels,
   // Cluster points
   vtkQuadricClustering *cluster = vtkQuadricClustering::New();
   cluster->SetNumberOfDivisions(divx,divy,divz);
-  cluster->SetInput(outgrid);
+  cluster->SetInputData(outgrid);
   cluster->SetUseInputPoints(1);
   cluster->Update();
 

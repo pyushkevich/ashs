@@ -26,6 +26,9 @@
 
 set -x -e
 
+# Library
+source ${ASHS_ROOT?}/bin/ashs_lib.sh
+
 # Verify all the necessary inputs
 cat <<-BLOCK1
 	Script: ashs_voting_qsub.sh
@@ -35,7 +38,11 @@ cat <<-BLOCK1
 BLOCK1
 
 # directory for the subfields (separate for different parameter values)
-WSUB=$ASHS_WORK/bootstrap/fusion
+if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+  WSUB=$ASHS_WORK/bootstrap/fusion
+else
+  WSUB=$ASHS_WORK/multiatlas/fusion
+fi
 
 # Directory for QA output
 WQA=$ASHS_WORK/qa
@@ -45,7 +52,7 @@ mkdir -p $WQA
 ASHS_LABELFILE=$ASHS_ATLAS/snap/snaplabels.txt
 
 # Generate the 'final' segmentations
-for side in left right; do
+for side in ${SIDES}; do
 
   for segtype in heur corr_usegray corr_nogray; do
 
@@ -57,7 +64,7 @@ for side in left right; do
 done
 
 # Names of segmentations
-for side in left right; do
+for side in ${SIDES}; do
 
 	SMASV=$WSUB/lfseg_heur_${side}.nii.gz
 	SBC=$WSUB/lfseg_corr_usegray_${side}.nii.gz
@@ -102,3 +109,4 @@ T2-MRI & InitSeg & BiasDetect & FinalSeg\\\\
 \\end{tabular}
 LATEX
 
+job_progress 1

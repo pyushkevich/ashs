@@ -43,104 +43,100 @@ cat <<-BLOCK1
 	Training subject: ${tid?}
 BLOCK1
 
-# Existing directory structure
-WFSL=$ASHS_WORK/flirt_t2_to_t1
-WANT=$ASHS_WORK/ants_t1_to_temp
+# Do we skip bootstrapping
+if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
 
-# Training directory and training data
-TDIR=$ASHS_ATLAS/train/train${tid}
-TSEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
+  # Existing directory structure
+  WFSL=$ASHS_WORK/flirt_t2_to_t1
+  WANT=$ASHS_WORK/ants_t1_to_temp
 
-# Create directory for this registration
-WREG=$ASHS_WORK/bootstrap/tseg_${side}_train${tid}
-mkdir -p $WREG
+  # Training directory and training data
+  TDIR=$ASHS_ATLAS/train/train${tid}
+  TSEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
 
-# TODO: organize this better!!!
+  # Create directory for this registration
+  WREG=$ASHS_WORK/bootstrap/tseg_${side}_train${tid}
+  mkdir -p $WREG
 
-# Get the fusion directory
-FDIR=$ASHS_WORK/multiatlas/fusion
+  # TODO: organize this better!!!
 
-# Perform fit atlas segmentation to the MALF segmentation
+  # Get the fusion directory
+  FDIR=$ASHS_WORK/multiatlas/fusion
 
-ml_affine $FDIR/lfseg_heur_${side}.nii.gz $TSEG $WREG/bs_affine.mat
-c3d_affine_tool $WREG/bs_affine.mat -oitk $WREG/bs_affine_itk.txt
+  # Get the subject and atlas data
+  ashs_subj_side_vars $ASHS_WORK $side
+  ashs_atlas_side_vars $tid $side 0
 
-# Halfway space registration
+  # Perform fit atlas segmentation to the MALF segmentation
+  ml_affine $FDIR/lfseg_heur_${side}.nii.gz $ATLAS_SEG $WREG/bs_affine.mat
 
-# Split transform into halves
-c3d_affine_tool $WREG/bs_affine.mat -sqrt \
-	-o $WREG/sqrt_fwd.mat -oitk $WREG/sqrt_fwd_itk.txt \
-	-inv -o $WREG/sqrt_inv.mat -oitk $WREG/sqrt_inv_itk.txt
+  # Halfway space registration
 
-# Convert segmentation into a mesh
-c3d $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 -o $TMPDIR/mybin.nii.gz
-vtklevelset $TMPDIR/mybin.nii.gz $TMPDIR/mymesh.vtk 0.5
+  # Split transform into halves
+  c3d_affine_tool $WREG/bs_affine.mat -sqrt \
+    -o $WREG/sqrt_fwd.mat -inv -o $WREG/sqrt_inv.mat 
 
-# Transform one of the meshes forward
-warpmesh $TMPDIR/mymesh.vtk $TMPDIR/mymeshhw.vtk $WREG/sqrt_fwd.mat
+  # Convert segmentation into a mesh
+  c3d $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 -o $TMPDIR/mybin.nii.gz
+  vtklevelset $TMPDIR/mybin.nii.gz $TMPDIR/mymesh.vtk 0.5
 
-# Generate reference space
-RES=$(echo $ASHS_TEMPLATE_TARGET_RESOLUTION | sed -e "s/x/ /g" -e "s/mm//g")
-mesh2img -vtk $TMPDIR/mymeshhw.vtk -f -a $RES 5 $WREG/refspace.nii.gz
+  # Transform one of the meshes forward
+  warpmesh $TMPDIR/mymesh.vtk $TMPDIR/mymeshhw.vtk $WREG/sqrt_fwd.mat
 
-# Warp both images into reference space
-c3d $WREG/refspace.nii.gz $TDIR/tse.nii.gz -reslice-matrix $WREG/sqrt_fwd.mat -o $TMPDIR/moving_hw.nii.gz
-c3d $WREG/refspace.nii.gz $ASHS_WORK/tse.nii.gz -reslice-matrix $WREG/sqrt_inv.mat -o $TMPDIR/fixed_hw.nii.gz
+  # Generate reference space
+  RES=$(echo $ASHS_TEMPLATE_TARGET_RESOLUTION | sed -e "s/x/ /g" -e "s/mm//g")
 
-# Create mask in reference space
-c3d $WREG/refspace.nii.gz  $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 \
-	-int 0 -reslice-matrix $WREG/sqrt_inv.mat -thresh 0.5 inf 1 0 -dilate 1 10x10x2vox \
-	-o $TMPDIR/mask.nii.gz
+  # TODO: this is a big margin - to do with greedy limitations!
+  mesh2img -vtk $TMPDIR/mymeshhw.vtk -f -a $RES 5 $WREG/refspace.nii.gz
 
-# Run ANTS in this space
-if [[ -f $WREG/antsregWarp.nii.gz && $ASHS_SKIP ]]; then
-  echo "Skipping ANTS registration"
-else
-  ANTS 3 \
-    -x $TMPDIR/mask.nii.gz \
-    -m PR[$TMPDIR/fixed_hw.nii.gz,$TMPDIR/moving_hw.nii.gz,1,4] \
-    -o $WREG/antsreg.nii.gz \
-    -i $ASHS_PAIRWISE_ANTS_ITER -t SyN[$ASHS_PAIRWISE_ANTS_STEPSIZE] -v \
-    --continue-affine false
+  # Warp both images into reference space
+  c3d $WREG/refspace.nii.gz $ATLAS_TSE -reslice-matrix $WREG/sqrt_fwd.mat -o $TMPDIR/moving_hw.nii.gz
+  c3d $WREG/refspace.nii.gz $SUBJ_TSE -reslice-matrix $WREG/sqrt_inv.mat -o $TMPDIR/fixed_hw.nii.gz
 
-  shrink_warp 3 $WREG/antsregWarp.nii.gz $WREG/antsregWarp.nii.gz
-  shrink_warp 3 $WREG/antsregInverseWarp.nii.gz $WREG/antsregInverseWarp.nii.gz
+  # Create mask in reference space
+  c3d $WREG/refspace.nii.gz  $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 \
+    -int 0 -reslice-matrix $WREG/sqrt_inv.mat -thresh 0.5 inf 1 0 -dilate 1 10x10x2vox \
+    -o $TMPDIR/mask.nii.gz
+
+  # Bootstrap transform file
+  BOOT_WARP=$WREG/greedy_warp.nii.gz
+
+  # Report intermittent progress
+  job_progress 0.5
+
+  # Run ANTS in this space
+
+  if [[ -f $BOOT_WARP && $ASHS_SKIP ]]; then
+    echo "Skipping ANTS registration"
+  else
+    # TODO: use the right parameters!
+    time greedy -d 3 $ASHS_GREEDY_THREADS \
+      -gm $TMPDIR/mask.nii.gz \
+      -m NCC 2x2x2 \
+      -i $TMPDIR/fixed_hw.nii.gz $TMPDIR/moving_hw.nii.gz \
+      -o $BOOT_WARP \
+      -e 0.5 -n 60x60x20
+  fi
+
+  # Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
+  # Since we only care about the region around the segmentation, we use tse_native_chunk
+
+  # Define the resliced images
+  ATLAS_RESLICE=$WREG/atlas_to_native.nii.gz
+  ATLAS_RESLICE_SEG=$WREG/atlas_to_native_segvote.nii.gz
+
+  greedy -d 3 $ASHS_GREEDY_THREADS \
+    -rm $ATLAS_TSE $ATLAS_RESLICE \
+    -ri LABEL ${ASHS_LABEL_SMOOTHING} -rm $ATLAS_SEG $ATLAS_RESLICE_SEG \
+    -rf $SUBJ_SIDE_TSE_NATCHUNK \
+    -r $WREG/sqrt_inv.mat,-1 $BOOT_WARP $WREG/sqrt_fwd.mat
+
+  # In tidy mode, we can clean up after this step
+  if [[ $ASHS_TIDY ]]; then
+    rm -rf $BOOT_WARP
+  fi
+
 fi
 
-# Warp the moving ASHS_TSE image into the space of the native ASHS_TSE image using one interpolation.
-# Since we only care about the region around the segmentation, we use tse_native_chunk
-WarpImageMultiTransform 3 $TDIR/tse.nii.gz \
-	$WREG/atlas_to_native.nii.gz \
-	-R $ASHS_WORK/tse_native_chunk_${side}.nii.gz \
-	-i $WREG/sqrt_inv_itk.txt \
-	$WREG/antsregWarp.nii.gz \
-	$WREG/sqrt_fwd_itk.txt
-
-# Warp the segmentation labels the same way. This should work with WarpImageMultiTransform --use-ML
-# but for some reason that is still broken. Let's use the old way
-ATLAS_SEG=$TSEG
-LSET=($(c3d $ATLAS_SEG -dup -lstat | awk 'NR > 1 {print $1}'))
-
-for ((i=0; i < ${#LSET[*]}; i++)); do
-
-	LID=$(printf '%03d' $i)
-	c3d $ATLAS_SEG -thresh ${LSET[i]} ${LSET[i]} 1 0 -smooth 0.24mm -o $TMPDIR/label_${LID}.nii.gz
-
-	WarpImageMultiTransform 3 $TMPDIR/label_${LID}.nii.gz \
-		$TMPDIR/label_${LID}_warp.nii.gz \
-		-R $ASHS_WORK/tse_native_chunk_${side}.nii.gz \
-		-i $WREG/sqrt_inv_itk.txt \
-		$WREG/antsregWarp.nii.gz \
-		$WREG/sqrt_fwd_itk.txt
-
-done
-
-# Perform voting using replacement rules
-RULES=$(for ((i=0; i < ${#LSET[*]}; i++)); do echo $i ${LSET[i]}; done)
-c3d $TMPDIR/label_*_warp.nii.gz -vote -replace $RULES -o $WREG/atlas_to_native_segvote.nii.gz
-
-# In tidy mode, we can clean up after this step
-if [[ $ASHS_TIDY ]]; then
-	rm -rf $WREG/antsreg*
-fi
-
+# Report progress
+job_progress 1

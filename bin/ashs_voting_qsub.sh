@@ -42,5 +42,18 @@ cat <<-BLOCK1
 	BOOTSTRAP: ${BOOTSTRAP}
 BLOCK1
 
-# Just run label fusion
-ashs_label_fusion_apply $BOOTSTRAP
+if [[ $BOOTSTRAP -ne 1 || $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+
+  # Just run label fusion
+  ashs_label_fusion_apply $BOOTSTRAP
+
+  # Generate the QC images
+  MALFMODE=$(if [[ $BOOTSTRAP -eq 1 ]]; then echo bootstrap; else echo multiatlas; fi)
+  ashs_segmentation_qc $side $MALFMODE heur
+  ashs_segmentation_qc $side $MALFMODE corr_usegray
+  ashs_segmentation_qc $side $MALFMODE corr_nogray
+
+fi
+
+# Report progress
+job_progress 1

@@ -45,6 +45,13 @@ function voxel_size()
 }
 
 # directory for the subfields (separate for different parameter values)
+if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
+  MODELIST="bootstrap multiatlas"
+else
+  MODELIST="multiatlas"
+fi
+
+# Final statistics output directory
 WSTAT=$ASHS_WORK/final
 mkdir -p $WSTAT
 
@@ -59,43 +66,81 @@ LABIDS=($(cat $TMPDIR/labels.txt | awk '{print $1}'))
 LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
 
 # Names of segmentations
-for segtype in raw heur corr_usegray; do
-  for side in left right; do
+for segtype in raw heur corr_usegray corr_nogray manual; do
+  for side in $SIDES; do
+    for bootmode in $MODELIST; do
 
-    SBC=$ASHS_WORK/bootstrap/fusion/lfseg_${segtype}_${side}.nii.gz
-    if [[ -f $SBC ]]; then
+      if [[ $segtype == "manual" ]]; then
+        SBC=$ASHS_WORK/refseg/refseg_${side}.nii.gz
+        STATBASE=$WSTAT/${ASHS_SUBJID}_${side}_manual
+        if [[ $bootmode == "bootstrap" ]]; then continue; fi
+      else
+        SBC=$ASHS_WORK/${bootmode}/fusion/lfseg_${segtype}_${side}.nii.gz
+        STATBASE=$WSTAT/${ASHS_SUBJID}_${side}_${bootmode}_${segtype}
+      fi
 
-      # Get voxel volume
-      VVOX=$(voxel_size $SBC)
+      if [[ -f $SBC ]]; then
 
-      # Create an output file
-      FNBODYVOL=$WSTAT/${ASHS_SUBJID}_${side}_${segtype}_volumes.txt 
-      rm -rf $FNBODYVOL
+        # Generate the voxel and extent statistics
+        STATS=$TMPDIR/rawvols_${segtype}_${side}.txt
+        c3d $SBC -dup -lstat | tee $STATS
 
-      # Dump volumes into that file
-      SUB=("bkg" "CA1" "CA2" "DG" "CA3" "HEAD" "TAIL" "misc" "SUB" "ERC" "PHG")
-      for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
+        # Create an output file
+        FNBODYVOL=${STATBASE}_volumes.txt 
+        rm -rf $FNBODYVOL
 
-        # The id of the label
-        i=${LABIDS[ilab]};
-        SUB=${LABNAMES[ilab]};
+        # Dump volumes into that file
+        for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
 
-        # Get the number of slices in this subfield 
-        NBODY=$(c3d $SBC -thresh $i $i 1 0 -trim 0mm -info \
-          | grep 'dim = ' | cut -f 1 -d ';' | awk '{print $7;}' | sed -e "s/]//")
+          # The id of the label
+          i=${LABIDS[ilab]};
+          SUB=${LABNAMES[ilab]};
 
-        # Get the volume of this subfield
-        VOLUME=$(c3d $SBC -thresh $i $i 1 0 -voxel-sum | awk {'print $3'})
+          # Get the extent along z axis
+          NBODY=$(cat $STATS | awk -v id=$i '$1 == id {print $10}')
 
-        # Get the volume of this subfield
-        VSUB=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
+          # Get the volume of this subfield
+          VSUB=$(cat $STATS | awk -v id=$i '$1 == id {print $7}')
 
-        # Write the volume information to output file
-        echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
+          # Write the volume information to output file
+          if [[ $NBODY ]]; then
+            echo $ASHS_SUBJID $side $SUB $NBODY $VSUB >> $FNBODYVOL
+          fi
 
-      done
+        done
 
-    fi
+        # If there is a reference segmentation, generate overlap statistics
+        REFSEG=$ASHS_WORK/refseg/refseg_${side}.nii.gz
+        if [[ -f $REFSEG && $segtype != "manual" ]]; then
+
+          # Get the overlap statistics
+          OVLFILE=$TMPDIR/ovl_${segtype}_${side}.txt
+          c3d $REFSEG -int 0 -dup $SBC -reslice-identity -label-overlap > $OVLFILE
+
+          # Extract the statistics for each label
+          OUTOVL=${STATBASE}_overlap.txt
+          rm -rf $OUTOVL
+
+          # Dump volumes into that file
+          for ((ilab = 0; ilab < ${#LABIDS[*]}; ilab++)); do
+
+            # The id of the label
+            i=${LABIDS[ilab]};
+            SUB=${LABNAMES[ilab]};
+
+            # Extract the overlap
+            OVL=$(cat $OVLFILE | awk -v k=$i '$1==k && NR>4 {print $4}')
+
+            if [[ $OVL ]]; then
+              echo $ASHS_SUBJID $side $SUB $OVL >> $OUTOVL
+            fi
+
+          done
+
+        fi
+
+      fi
+    done
   done
 done
 
@@ -103,10 +148,11 @@ done
 if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
   # Warp the BET mask
-  WarpImageMultiTransform 3 $ASHS_ATLAS/template/template_bet_mask.nii.gz \
-    $TMPDIR/icv.nii.gz -R $ASHS_WORK/mprage.nii.gz \
-    -i $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
-    $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempInverseWarp.nii
+  greedy -d 3 $ASHS_GREEDY_THREADS \
+    -rm $ASHS_ATLAS/template/template_bet_mask.nii.gz $TMPDIR/icv.nii.gz \
+    -rf $ASHS_WORK/mprage.nii.gz \
+    -r $ASHS_WORK/affine_t1_to_template/t1_to_template_affine_inv.mat \
+       $ASHS_WORK/ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz
 
   # Get T1 voxel volume
   VVOX=$(voxel_size $TMPDIR/icv.nii.gz)
@@ -119,3 +165,6 @@ if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
   echo $ASHS_SUBJID $ICV > $WSTAT/${ASHS_SUBJID}_icv.txt
 
 fi
+
+# Report final progress
+job_progress 1

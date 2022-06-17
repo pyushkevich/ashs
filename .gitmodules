@@ -1,0 +1,6 @@
+[submodule "submodules/c3d"]
+	path = submodules/c3d
+	url = http://git.code.sf.net/p/c3d/git
+[submodule "submodules/greedy"]
+	path = submodules/greedy
+	url = https://github.com/pyushkevich/greedy

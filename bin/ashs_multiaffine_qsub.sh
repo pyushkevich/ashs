@@ -30,8 +30,8 @@ set -x -e
 source ${ASHS_ROOT?}/bin/ashs_lib.sh
 
 # Determine training case and side based on the TASK ID
-SIDES=(left right)
-side=${SIDES[$(((SGE_TASK_ID - 1) % 2))]}
+SIDEARR=(left right)
+side=${SIDEARR[$(((SGE_TASK_ID - 1) % 2))]}
 tid=$(printf %03d $(((SGE_TASK_ID - 1)/ 2)))
 
 # Verify all the necessary inputs
@@ -60,5 +60,5 @@ mkdir -p $WREG
 # Go to the work directory
 cd $ASHS_WORK
 
-# Run ANTS with current image as fixed, training image as moving
+# Run registration with current image as fixed, training image as moving
 ashs_ants_pairwise 0

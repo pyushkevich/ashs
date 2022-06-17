@@ -1,7 +1,7 @@
 /*===================================================================
 
   Program:   ASHS (Automatic Segmentation of Hippocampal Subfields)
-  Module:    $Id$
+  Module:    $Id: LabelFusion.cxx 116 2017-06-06 14:07:08Z yushkevich $
   Language:  C++ program
   Copyright (c) 2012 Paul A. Yushkevich, University of Pennsylvania
   
@@ -54,15 +54,16 @@ int usage()
   cout << "required options:" << endl;
   cout << "  dim                             Image dimension (2 or 3)" << endl;
   cout << "  -g atlas1.nii ... atlasN.nii    Atlas intensity images" << endl;
+  cout << "other options: " << endl;
+  cout << "  -rp radius                      Patch radius for similarity measures " << endl;
   cout << "  -l label1.nii ... labelN.nii    Atlas segmentation images" << endl;
+  cout << "                                  Required, unless -w output is specified" << endl;
   cout << "  -m <method> [parameters]        Select voting method." << endl;
   cout << "                                  Options: Gauss (Gaussian Weighting), " << endl;
   cout << "                                           Joint (Joint Label Fusion) " << endl;
   cout << "                                  May be followed by optional parameters" << endl;
   cout << "                                  in brackets, e.g., -m Gauss[0.5] or -m Joint[0.01,2]" << endl;
   cout << "                                  See below for parameters" << endl;
-  cout << "other options: " << endl;
-  cout << "  -rp radius                      Patch radius for similarity measures " << endl;
   cout << "                                  scalar or vector (AxBxC) " << endl;
   cout << "                                  Default: 3x3x3" << endl;
   cout << "  -rs radius                      Search radius for correcting registration." << endl;
@@ -79,14 +80,22 @@ int usage()
   cout << "  -w filenamePattern              Save weight maps corresponding to the atlases." << endl;
   cout << "                                  The pattern should be like weight%04d.nii.gz" << endl;
   cout << "                                  This really only makes sense for -rs 0x0x0" << endl;
+<<<<<<< HEAD
+  cout << "  -M mask.nii                     Optional mask specifying the region where label fusion will be done" << endl;
+  cout << "                                  When this is not specified, the mask will be automatically computed" << endl;
+  cout << "                                  based on whether there are more than one labels that could be" << endl;
+  cout << "                                  potentially assigned to a given voxel" << endl;
+  cout << "  -threads N                      Limit number of threads to N" << endl;
+=======
+>>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
   cout << "Parameters for -m Gauss option:" << endl;
   cout << "  sigma                           Standard deviation of Gaussian" << endl;
   cout << "                                  Default: X.XX" << endl;
   cout << "Parameters for -m Joint option:" << endl;
   cout << "  alpha                           Regularization term added to matrix Mx for inverse" << endl;
-  cout << "                                  Default: X.XX" << endl;
+  cout << "                                  Default: 0.1" << endl;
   cout << "  beta                            Exponent for mapping intensity difference to joint error" << endl;
-  cout << "                                  Default: X.XX" << endl;
+  cout << "                                  Default: 2" << endl;
 
   return -1;
 }
@@ -106,6 +115,7 @@ struct LFParam
   string fnPosterior;
   string fnWeight;
   LFMethod method;
+  string fnMask;
 
   map<int, string> fnExclusion;
 
@@ -115,25 +125,32 @@ struct LFParam
   bool padding;
   itk::Size<VDim> paddingSize;
 
+  int threads;
+
   LFParam()
     {
-    alpha = 0.01;
+    alpha = 0.1;
     beta = 2;
     sigma = 0.5;
     r_patch.Fill(3);
     r_search.Fill(3);
     method = JOINT;
     padding = false;
+    threads = 0;
     }
 
   void Print(std::ostream &oss)
     {
     oss << "Target image: " << fnTarget << endl;
     oss << "Output image: " << fnOutput << endl;
+    oss << "Mask image  : " << fnMask << endl;
     oss << "Atlas images: " << endl;
     for(size_t i = 0; i < fnAtlas.size(); i++)
       {
-      oss << "    " << i << "\t" << fnAtlas[i] << " | " << fnLabel[i] << endl;
+      if(fnLabel.size())
+        oss << "    " << i << "\t" << fnAtlas[i] << " | " << fnLabel[i] << endl;
+      else
+        oss << "    " << i << "\t" << fnAtlas[i] << endl;
       }
     if(method == GAUSSIAN)
       {
@@ -193,6 +210,50 @@ void ExpandRegion(itk::ImageRegion<VDim> &r, bool &isinit, const itk::Index<VDim
         } 
       }
     }
+}
+
+template <class TImage>
+void ExpandRegion(TImage *image, typename TImage::RegionType &r, bool &isinit)
+{
+  for(itk::ImageRegionIteratorWithIndex<TImage> it(image, image->GetBufferedRegion()); 
+    !it.IsAtEnd(); ++it)
+    {
+    if(it.Get())
+      {
+      ExpandRegion<TImage::ImageDimension>(r, isinit, it.GetIndex());
+      }
+    }
+}
+
+template <unsigned int VDim>
+typename itk::Image<float, VDim>::Pointer
+LoadAndPadImage(string filename, const LFParam<VDim> &param)
+{
+  // Image type
+  typedef itk::Image<float, VDim> ImageType;
+
+  // Set up the image reader
+  typedef itk::ImageFileReader<ImageType> ReaderType;
+  typename ReaderType::Pointer reader = ReaderType::New();
+  reader->SetFileName(filename.c_str());
+  reader->Update();
+
+  // Read the image
+  typename ImageType::Pointer image = reader->GetOutput();
+
+  // Apply padding if requested
+  if(param.padding)
+    {
+    typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
+    typename PadFilter::Pointer padTarget = PadFilter::New();
+    padTarget->SetInput(image);
+    padTarget->SetPadLowerBound(param.paddingSize);
+    padTarget->SetPadUpperBound(param.paddingSize);
+    padTarget->Update();
+    image = padTarget->GetOutput();
+    }
+
+  return image;
 }
 
 
@@ -264,6 +325,17 @@ int lfapp(int argc, char *argv[])
       p.fnExclusion[label] = image;
       }
 
+    else if(arg == "-threads")
+      {
+      p.threads = atoi(argv[++j]);
+      }
+
+    else if(arg == "-M")
+      {
+      string image = argv[++j];
+      p.fnMask = image;
+      }
+
     else if(arg == "-m" && j < argend-1)
       {
       char *parm = argv[++j];
@@ -331,7 +403,7 @@ int lfapp(int argc, char *argv[])
     }
 
   // We have the parameters now. Check for validity
-  if(p.fnAtlas.size() != p.fnLabel.size())
+  if(p.fnAtlas.size() != p.fnLabel.size() && p.fnLabel.size() > 0)
     {
     cerr << "Number of atlases and segmentations does not match" << endl;
     return -1;
@@ -377,8 +449,20 @@ int lfapp(int argc, char *argv[])
   cout << "LABEL FUSION PARAMETERS:" << endl;
   p.Print(cout);
 
+  // Use the threads parameter
+  if(p.threads > 0)
+    {
+    std::cout << "Limiting the number of threads to " << p.threads << std::endl;
+    itk::MultiThreader::SetGlobalMaximumNumberOfThreads(p.threads);
+    }
+  else
+    {
+    std::cout << "Executing with the default number of threads: " << itk::MultiThreader::GetGlobalDefaultNumberOfThreads() << std::endl;
+    }
+
   // Configure the filter
   typedef itk::Image<float, VDim> ImageType;
+  typedef typename ImageType::Pointer ImagePointer;
   typedef WeightedVotingLabelFusionImageFilter<ImageType, ImageType> VoterType;
   typename VoterType::Pointer voter = VoterType::New();
 
@@ -386,78 +470,53 @@ int lfapp(int argc, char *argv[])
   typedef itk::ImageFileReader<ImageType> ReaderType;
   typedef itk::ImageFileWriter<ImageType> WriterType;
 
-  typename ReaderType::Pointer rTarget = ReaderType::New();
-  rTarget->SetFileName(p.fnTarget.c_str());
-  rTarget->Update();
-  typename ImageType::Pointer target = rTarget->GetOutput();
-
-  if(p.padding)
-    {
-    typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
-    typename PadFilter::Pointer padTarget = PadFilter::New();
-    padTarget->SetInput(target);
-    padTarget->SetPadLowerBound(p.paddingSize);
-    padTarget->SetPadUpperBound(p.paddingSize);
-    padTarget->Update();
-    target = padTarget->GetOutput();
-    }
-
+  // Read the target image
+  ImagePointer target = LoadAndPadImage(p.fnTarget, p);
   voter->SetTargetImage(target);
 
   // Compute the output region by merging all segmentations
   itk::ImageRegion<VDim> rMask;
   bool isMaskInit = false;
 
+  // Read the mask image
+  if(p.fnMask.length())
+    {
+    // Read the mask image
+    ImagePointer mask = LoadAndPadImage(p.fnMask, p);
+    voter->SetMaskImage(mask);
+
+    // Initialize the mask region based on the mask
+    ExpandRegion(mask.GetPointer(), rMask, isMaskInit);
+    }
+
   std::vector<typename ReaderType::Pointer> rAtlas, rLabel;
   for(size_t i = 0; i < p.fnAtlas.size(); i++)
     {
-    typename ReaderType::Pointer ra, rl;
-    ra = ReaderType::New();
-    ra->SetFileName(p.fnAtlas[i].c_str());
-    ra->Update();
-    rAtlas.push_back(ra);
-    rl = ReaderType::New();
-    rl->SetFileName(p.fnLabel[i].c_str());
-    rl->Update();
-    rLabel.push_back(rl);
-
-    // Apply padding if requested
-    typename ImageType::Pointer imgAtlas = ra->GetOutput(), imgLabel = rl->GetOutput();
-
-    if(p.padding)
+    if(p.fnLabel.size())
       {
-      typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
-      typename PadFilter::Pointer padAtlas = PadFilter::New();
-      padAtlas->SetInput(imgAtlas);
-      padAtlas->SetPadLowerBound(p.paddingSize);
-      padAtlas->SetPadUpperBound(p.paddingSize);
-      padAtlas->Update();
-      imgAtlas = padAtlas->GetOutput();
-
-      typename PadFilter::Pointer padLabel = PadFilter::New();
-      padLabel->SetInput(imgLabel);
-      padLabel->SetPadLowerBound(p.paddingSize);
-      padLabel->SetPadUpperBound(p.paddingSize);
-      padLabel->Update();
-      imgLabel = padLabel->GetOutput();
+      ImagePointer imgAtlas = LoadAndPadImage(p.fnAtlas[i], p);
+      ImagePointer imgLabel = LoadAndPadImage(p.fnLabel[i], p);
+      voter->AddAtlas(imgAtlas, imgLabel);
+      
+      // Update the mask region
+      ExpandRegion(imgLabel.GetPointer(), rMask, isMaskInit);
       }
-
-    voter->AddAtlas(imgAtlas, imgLabel);
-
-    // Update the mask region
-    for(itk::ImageRegionIteratorWithIndex<ImageType> 
-      it(imgLabel, imgLabel->GetBufferedRegion()); 
-      !it.IsAtEnd(); ++it)
+    else
       {
-      if(it.Get())
-        {
-        ExpandRegion<VDim>(rMask, isMaskInit, it.GetIndex());
-        }
+      ImagePointer imgAtlas = LoadAndPadImage(p.fnAtlas[i], p);
+      voter->AddAtlas(imgAtlas);
       }
 
     // Unload the image if needed (so that memory is freed up)
     // PY: I DON'T UNDERSTAND THIS - IT'S CAUSING A BUG!
     // rl->GetOutput()->ReleaseData();
+    }
+
+  // If the region has not been set up, set the region to be the target region
+  if(!isMaskInit)
+    {
+    isMaskInit = true;
+    rMask = target->GetBufferedRegion();
     }
 
   // Make sure the region is inside bounds
@@ -492,23 +551,7 @@ int lfapp(int argc, char *argv[])
   // Set the exclusions in the atlas
   for(typename map<int,string>::iterator xit = p.fnExclusion.begin(); xit != p.fnExclusion.end(); ++xit)
     {
-    typename ReaderType::Pointer rx;
-    rx = ReaderType::New();
-    rx->SetFileName(xit->second.c_str());
-    rx->Update();
-    typename ImageType::Pointer xmap = rx->GetOutput();
-
-    if(p.padding)
-      {
-      typedef itk::MirrorPadImageFilter<ImageType, ImageType> PadFilter;
-      typename PadFilter::Pointer padXMap = PadFilter::New();
-      padXMap->SetInput(xmap);
-      padXMap->SetPadLowerBound(p.paddingSize);
-      padXMap->SetPadUpperBound(p.paddingSize);
-      padXMap->Update();
-      xmap = padXMap->GetOutput();
-      }
-
+    ImagePointer xmap = LoadAndPadImage(xit->second, p);
     voter->AddExclusionMap(xit->first, xmap);
     }
 
@@ -646,6 +689,10 @@ int lfapp(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+  // Set the tolerance on the image matrices - to prevent silly errors
+  itk::ImageToImageFilterCommon::SetGlobalDefaultCoordinateTolerance(1e-4);
+  itk::ImageToImageFilterCommon::SetGlobalDefaultDirectionTolerance(1e-4);
+
   // Parse user input
   if(argc < 5) return usage();
 

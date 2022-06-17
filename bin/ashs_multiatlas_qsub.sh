@@ -44,14 +44,6 @@ cat <<-BLOCK1
 	Training subject: ${tid?}
 BLOCK1
 
-# Existing directory structure
-WFSL=$ASHS_WORK/flirt_t2_to_t1
-WANT=$ASHS_WORK/ants_t1_to_temp
-
-# Training directory and training data
-TDIR=$ASHS_ATLAS/train/train${tid}
-TSEG=$TDIR/tse_native_chunk_${side}_seg.nii.gz
-
 # Create directory for this registration
 WREG=$ASHS_WORK/multiatlas/tseg_${side}_train${tid}
 mkdir -p $WREG
@@ -59,5 +51,8 @@ mkdir -p $WREG
 # Go to the work directory
 cd $ASHS_WORK
 
-# Run ANTS with current image as fixed, training image as moving
-ashs_ants_pairwise 0
+# Run registration with current image as fixed, training image as moving
+ashs_ants_pairwise $ASHS_WORK $side $tid $WREG 0
+
+# Report progress
+job_progress 1

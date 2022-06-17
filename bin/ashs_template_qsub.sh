@@ -36,103 +36,217 @@ cat <<-BLOCK1
 	Working directory: ${ASHS_WORK?}
 	PATH: ${PATH?}
   Skip Rigid: ${ASHS_SKIP_RIGID}
-  Skip Ants: ${ASHS_SKIP_ANTS}
+  Skip Ants: ${ASHS_SKIP_REGN}
 BLOCK1
 
 # Ensure directory structure
 WFSL=$ASHS_WORK/flirt_t2_to_t1
 WANT=$ASHS_WORK/ants_t1_to_temp
-mkdir -p $WANT $WFSL
+WAFF=$ASHS_WORK/affine_t1_to_template
+mkdir -p $WANT $WFSL $WAFF
 
 # Set some variables
 TEMP_T1_FULL=$ASHS_ATLAS/template/template.nii.gz
 TEMP_T1_MASK=$ASHS_ATLAS/template/template_bet_mask.nii.gz
 
+# Subject files generated in this script
+ashs_subj_vars $ASHS_WORK
+
+# Additional variables for local use
+SUBJ_AFF_T1TEMP_RESLICE=$WAFF/t1_to_template_affine.nii.gz
+
 # Copy the images into the working directory
-if [[ $ASHS_MPRAGE -nt $ASHS_WORK/mprage.nii.gz ]]; then
-  c3d $ASHS_MPRAGE -type ushort -o $ASHS_WORK/mprage.nii.gz
+if [[ $ASHS_MPRAGE -nt $SUBJ_MPRAGE ||  ! -f $SUBJ_MPRAGE ]]; then
+  ### TODO: I took this out because it was messing up CL with old atlases!
+  ### c3d $ASHS_MPRAGE -stretch 1% 99% 0 4096 -clip 0 4096 -type short -o $SUBJ_MPRAGE
+  c3d $ASHS_MPRAGE -type short -o $SUBJ_RAWMPRAGE
+
+  # Perform preprocessing - denoising
+  SUBJ_MPRAGE_DENOISE=$ASHS_WORK/mprage_d.nii.gz
+  echo "ASHS_MPRAGE_DENOISE = $ASHS_MPRAGE_DENOISE"
+  if [[ $ASHS_MPRAGE_DENOISE == 1 ]]; then
+    NLMDenoise \
+      -i $SUBJ_RAWMPRAGE \
+      -o $SUBJ_MPRAGE_DENOISE
+  else
+    cp $SUBJ_RAWMPRAGE $SUBJ_MPRAGE_DENOISE
+  fi
+
+  # Perform preprocessing - SR upsample
+  if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 ]]; then
+
+    # get orientation code
+    orient_code=$(c3d $ASHS_MPRAGE -info | cut -d ';' -f 5 | cut -d ' ' -f 5)
+    if [[ $orient_code == "Oblique," ]]; then
+      orient_code=$(c3d $ASHS_MPRAGE -info | cut -d ';' -f 5 | cut -d ' ' -f 8)
+    fi
+
+    # Swap the dimention of the image to RPI
+    c3d $SUBJ_MPRAGE_DENOISE \
+      -clip 0 inf -type short \
+      -swapdim RPI \
+      -o $SUBJ_MPRAGE_DENOISE
+
+    # Perform upsample
+    NLMUpsample \
+      -i $SUBJ_MPRAGE_DENOISE \
+      -o $SUBJ_MPRAGE \
+      -lf $ASHS_MPRAGE_SRUPSAMPLE_FACTOR
+
+    # Swap the dimention back to the original orientation code
+    c3d $SUBJ_MPRAGE -swapdim $orient_code \
+      -o $SUBJ_MPRAGE
+
+  else
+    cp $SUBJ_MPRAGE_DENOISE $SUBJ_MPRAGE
+  fi
+
+  # remove intermediate file
+  rm -f $SUBJ_MPRAGE_DENOISE
+
 fi
 
-if [[ $ASHS_TSE -nt $ASHS_WORK/tse.nii.gz ]]; then
-  c3d $ASHS_TSE -type ushort -o $ASHS_WORK/tse.nii.gz 
-fi
+if [[ $ASHS_TSE -nt $SUBJ_TSE || ! -f $SUBJ_TSE ]]; then
+  ### TODO: I took this out because it was messing up CL with old atlases!
+  ### c3d $ASHS_TSE -stretch 1% 99% 0 4096 -clip 0 4096 -type short -o $SUBJ_TSE 
+  c3d $ASHS_TSE -type short -o $SUBJ_RAWTSE 
 
-# Histogram match the images to a reference image (used later down the road, but better to do it now)
-for kind in tse mprage; do
-  c3d $ASHS_ATLAS/ref_hm/ref_${kind}.nii.gz $ASHS_WORK/${kind}.nii.gz \
-    -histmatch 5 -o $ASHS_WORK/${kind}_histmatch.nii.gz
-done
+  # Perform preprocessing - denoising
+  SUBJ_TSE_DENOISE=$ASHS_WORK/tse_d.nii.gz
+  if [[ $ASHS_TSE_DENOISE == 1 ]]; then
+    NLMDenoise \
+      -i $SUBJ_RAWTSE \
+      -o $SUBJ_TSE_DENOISE
+  else
+    cp $SUBJ_RAWTSE $SUBJ_TSE_DENOISE
+  fi
+
+  # Perform preprocessing - SR upsample
+  if [[ $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+
+    # get orientation code
+    orient_code=$(c3d $ASHS_TSE -info | cut -d ';' -f 5 | cut -d ' ' -f 5)
+    if [[ $orient_code == "Oblique," ]]; then
+      orient_code=$(c3d $ASHS_TSE -info | cut -d ';' -f 5 | cut -d ' ' -f 8)
+    fi
+
+    # Swap the dimention of the image to RPI
+    c3d $SUBJ_TSE_DENOISE -swapdim RPI \
+      -o $SUBJ_TSE_DENOISE
+
+    # Perform upsample
+    NLMUpsample \
+      -i $SUBJ_TSE_DENOISE \
+      -o $SUBJ_TSE \
+      -lf $ASHS_TSE_SRUPSAMPLE_FACTOR
+
+    # Swap the dimention back to the original orientation code
+    c3d $SUBJ_TSE -clip 0 inf -type short -swapdim $orient_code \
+      -o $SUBJ_TSE
+
+  else
+    cp $SUBJ_TSE_DENOISE $SUBJ_TSE
+  fi
+
+  # remove intermediate file
+  rm -f $SUBJ_TSE_DENOISE
+
+
+fi
 
 # --- RIGID ALIGNMENT T1/T2 ---
-ashs_align_t1t2 $ASHS_WORK $WFSL
+ashs_align_t1t2 $ASHS_WORK $ASHS_INPUT_T2T1_MAT $ASHS_INPUT_T2T1_MODE
+
+# Report some progress
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.8
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.6
+else
+  job_progress 0.25
+fi
+
 
 # Use FLIRT to register T1 to template
-WAFF=$ASHS_WORK/affine_t1_to_template
-mkdir -p $WAFF
-
-if [[ -f $WAFF/t1_to_template_ITK.txt && $ASHS_SKIP_RIGID ]]; then
+if [[ -f $SUBJ_AFF_T1TEMP_MAT && $ASHS_SKIP_RIGID ]]; then
 
   echo "Skipping Affine Registration"
 
 else
 
-	# Try using FLIRT
-  export FSLOUTPUTTYPE=NIFTI_GZ
+  if [[ $ASHS_T1TEMP_RIGID_MASK ]]; then
+    BMASK=" -gm $TEMP_T1_MASK "
+  else
+    BMASK=""
+  fi
 
-  # Run flirt with template as reference
-  flirt -v -anglerep quaternion -ref $TEMP_T1_FULL -in $ASHS_WORK/mprage.nii.gz \
-    -datatype short -o $WAFF/test_flirt_affine.nii.gz \
-    -omat $WAFF/flirt_intermediate_affine.mat -cost corratio -searchcost corratio
+  # Start with a very fast rigid transform - hope is it won't hurt things and
+  # will actually prevent affine from doing insane scaling
+  time greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m NCC 2x2x2 \
+    -i $TEMP_T1_FULL $SUBJ_MPRAGE \
+    -o $WAFF/greedy_t1_to_template_init_rigid.mat -n 400x0x0x0 \
+    -ia-image-centers -search 400 5 5 \
+    $BMASK
+    
+  # Use greedy
+  time greedy -d 3 $ASHS_GREEDY_THREADS -a -m NCC 2x2x2 \
+    -i $TEMP_T1_FULL $SUBJ_MPRAGE \
+    -o $WAFF/greedy_t1_to_template.mat -n 400x80x40x0 \
+    -ia $WAFF/greedy_t1_to_template_init_rigid.mat \
+    $BMASK
 
-  # Convert the transform to ITK
-  c3d_affine_tool $WAFF/flirt_intermediate_affine.mat -ref $TEMP_T1_FULL -src $ASHS_WORK/mprage.nii.gz \
-    -fsl2ras -oitk $WAFF/flirt_t1_to_template_ITK.txt
+fi
 
-  # Try using ANTS
-	ANTS 3 -m MI[$TEMP_T1_FULL,$ASHS_WORK/mprage.nii.gz,1,32] -o $WAFF/antsaffineonly.nii.gz -i 0 
-	WarpImageMultiTransform 3 $ASHS_WORK/mprage.nii.gz $WAFF/test_ants_affine.nii.gz \
-		-R $TEMP_T1_FULL $WAFF/antsaffineonlyAffine.txt
+greedy -d 3 $ASHS_GREEDY_THREADS -r $WAFF/greedy_t1_to_template.mat -rf $TEMP_T1_FULL \
+  -rm $ASHS_WORK/mprage.nii.gz $WAFF/test_greedy_affine.nii.gz
 
-	# Compare the two images
-	SIM_FLIRT=$(c3d $TEMP_T1_FULL $WAFF/test_flirt_affine.nii.gz -nmi | awk '{print int(1000*$3)}');
-	SIM_ANTS=$(c3d $TEMP_T1_FULL $WAFF/test_ants_affine.nii.gz -nmi | awk '{print int(1000*$3)}');
-	if [[ $SIM_FLIRT -gt $SIM_ANTS ]]; then
-		cp -a $WAFF/flirt_t1_to_template_ITK.txt $WAFF/t1_to_template_ITK.txt
-	else
-		cp -a $WAFF/antsaffineonlyAffine.txt $WAFF/t1_to_template_ITK.txt
-	fi
+# Store the transform
+cp -a $WAFF/greedy_t1_to_template.mat $SUBJ_AFF_T1TEMP_MAT
+ln -sf $WAFF/test_greedy_affine.nii.gz $SUBJ_AFF_T1TEMP_RESLICE
 
+# Compute the inverse matrix
+c3d_affine_tool $SUBJ_AFF_T1TEMP_MAT -inv -o $SUBJ_AFF_T1TEMP_INVMAT
+
+# Report some more progress
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.9
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.8
+else
+  job_progress 0.5
 fi
 
 # Use ANTS to warp the ASHS_MPRAGE image to the template
-if [[ $ASHS_SKIP_ANTS \
-  && -f $WANT/ants_t1_to_tempAffine.txt \
-  && -f $WANT/ants_t1_to_tempWarp.nii \
-  && -f $WANT/ants_t1_to_tempInverseWarp.nii ]]; then
+if [[ $ASHS_SKIP_REGN && -f $SUBJ_T1TEMP_WARP ]]; then
 
-    echo "SKIPPING ANTS"
+    echo "SKIPPING Deformable registration"
   
 else
-
-    ANTS 3 -m PR[$TEMP_T1_FULL,$ASHS_WORK/mprage.nii.gz,1,4] \
-      -x $TEMP_T1_MASK \
-      -o $WANT/ants_t1_to_temp.nii \
-      -a $WAFF/t1_to_template_ITK.txt \
-      -i ${ASHS_TEMPLATE_ANTS_ITER} -v | tee $WANT/ants_output.txt
-  
-    shrink_warp 3 $WANT/ants_t1_to_tempWarp.nii.gz $WANT/ants_t1_to_tempWarp.nii.gz
-    shrink_warp 3 $WANT/ants_t1_to_tempInverseWarp.nii.gz $WANT/ants_t1_to_tempInverseWarp.nii.gz
+    
+    time greedy -d 3 $ASHS_GREEDY_THREADS -m NCC 2x2x2 -e 0.5 -n ${ASHS_TEMPLATE_ITER} \
+      -i $TEMP_T1_FULL $SUBJ_AFF_T1TEMP_RESLICE \
+      -o $SUBJ_T1TEMP_WARP \
+      -oinv $SUBJ_T1TEMP_INVWARP \
+      -gm $TEMP_T1_MASK
 
 fi
 
+# Report some more progress
+if [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 && $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.98
+elif [[ $ASHS_MPRAGE_SRUPSAMPLE == 1 || $ASHS_TSE_SRUPSAMPLE == 1 ]]; then
+  job_progress 0.95
+else
+  job_progress 0.9
+fi
+
 # Apply the transformation to the T1 image and to the T1 segmentation
-WarpImageMultiTransform 3 $ASHS_WORK/mprage.nii.gz \
-  $WANT/reslice_mprage_to_template.nii.gz -R $TEMP_T1_FULL \
-  $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt
+greedy -d 3 $ASHS_GREEDY_THREADS -rm $SUBJ_MPRAGE $WANT/reslice_mprage_to_template.nii.gz \
+  -rf $TEMP_T1_FULL -r $SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT
 
 # Apply the transformation to the T2 image 
-WarpImageMultiTransform 3 $ASHS_WORK/tse.nii.gz $WANT/reslice_tse_to_template.nii.gz -R $TEMP_T1_FULL \
-  $WANT/ants_t1_to_tempWarp.nii $WANT/ants_t1_to_tempAffine.txt $WFSL/flirt_t2_to_t1_ITK.txt
+greedy -d 3 $ASHS_GREEDY_THREADS -rm $SUBJ_TSE $WANT/reslice_tse_to_template.nii.gz \
+  -rf $TEMP_T1_FULL -r $SUBJ_T1TEMP_WARP $SUBJ_AFF_T1TEMP_MAT $SUBJ_AFF_T2T1_INVMAT
 
 # Transform all of the images into the chunk template space
 ashs_reslice_to_template $ASHS_WORK $ASHS_ATLAS
@@ -140,8 +254,8 @@ ashs_reslice_to_template $ASHS_WORK $ASHS_ATLAS
 # If there is a reference segmentation image, process it too
 if [[ -f $ASHS_REFSEG_RIGHT && -f $ASHS_REFSEG_LEFT ]]; then
   mkdir -p $ASHS_WORK/refseg
-  c3d $ASHS_REFSEG_LEFT -type ushort -o $ASHS_WORK/refseg/refseg_left.nii.gz
-  c3d $ASHS_REFSEG_RIGHT -type ushort -o $ASHS_WORK/refseg/refseg_right.nii.gz
+  c3d $ASHS_REFSEG_LEFT -type short -o $ASHS_WORK/refseg/refseg_left.nii.gz
+  c3d $ASHS_REFSEG_RIGHT -type short -o $ASHS_WORK/refseg/refseg_right.nii.gz
 
   if [[ $ASHS_HEURISTICS ]]; then
     for side in left right; do
@@ -161,3 +275,12 @@ fi
 if [[ $ASHS_TIDY ]]; then
 	rm -rf $ASHS_WORK/tse_histmatch.nii.gz $ASHS_WORK/mprage_histmatch.nii.gz
 fi
+
+# Generate a QC image for the registration
+for side in $SIDES; do
+  ashs_registration_qc $side
+done
+
+# Report final progress
+job_progress 1
+

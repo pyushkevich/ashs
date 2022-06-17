@@ -43,20 +43,33 @@ MYWORK=$ASHS_WORK/atlas/$id
 WFSL=$MYWORK/flirt_t2_to_t1
 mkdir -p $MYWORK $WFSL
 
+# Parse the manifest file for this ID
+FILES=($(cat $ASHS_TRAIN_MANIFEST | awk -v id=$id '$1 == id { print $2,$3,$4,$5 }'))
+
 # Copy the images into the working directory and set the transforms
 # of the segmentations to equal the transforms of the input images.
 if [[ $ASHS_SKIP && \
       -f $MYWORK/mprage.nii.gz && -f $MYWORK/tse.nii.gz && \
-      -f $MYWORK/seg_left.nii.gz && -f $MYWORK/seg_right.nii.gz ]]; 
+      -f $MYWORK/seg_left.nii.gz && -f $MYWORK/seg_right.nii.gz && \
+      -f $MYWORK/mprage_lr.nii.gz ]]; 
 then
   echo "Skipping initial image copy for subject $id"
 else 
   $ASHS_BIN/c3d -type ushort \
-    $2 -o $MYWORK/mprage.nii.gz \
-    $3 -o $MYWORK/tse.nii.gz -popas REF \
-    -push REF $4 -copy-transform -o $MYWORK/seg_left.nii.gz \
-    -push REF $5 -copy-transform -o $MYWORK/seg_right.nii.gz
+    ${FILES[0]} -as MPR -o $MYWORK/mprage.nii.gz \
+    ${FILES[1]} -o $MYWORK/tse.nii.gz -popas REF \
+    -push REF ${FILES[2]} -copy-transform -o $MYWORK/seg_left.nii.gz \
+    -push REF ${FILES[3]} -copy-transform -o $MYWORK/seg_right.nii.gz \
+    -push MPR -smooth-fast 4vox -resample 12.5% -o $MYWORK/mprage_lr.nii.gz
 fi
 
 # Peform registration between the two modalities
-ashs_align_t1t2 $MYWORK $WFSL
+# Check if the is an override for the affine matrix
+if [[ -f $ASHS_TRAIN_TRANSFORM_MANIFEST ]]; then
+  OVERRIDE_MAT=$(cat $ASHS_TRAIN_TRANSFORM_MANIFEST | awk -v id=$id '$1==id {print $2}')
+  OVERRIDE_MODE=$(cat $ASHS_TRAIN_TRANSFORM_MANIFEST | awk -v id=$id '$1==id {print $3}')
+  ashs_align_t1t2 $MYWORK $OVERRIDE_MAT $OVERRIDE_MODE
+else
+  ashs_align_t1t2 $MYWORK
+fi
+

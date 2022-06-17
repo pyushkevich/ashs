@@ -83,8 +83,8 @@ c3d_affine_tool -itk $ASHS_WORK/ants_t1_to_temp/ants_t1_to_tempAffine.txt \
 # Set the target template
 TEMPLATE=$ASHS_ROOT/data/template/roi/consensus_${side}_${anat}.nii.gz
 
-# Run ANTS (unless previously run)
-if [[ -f $WTHK/roi_antsAffine.txt && $ASHS_SKIP_ANTS ]]; then
+# Run registration (unless previously run)
+if [[ -f $WTHK/roi_antsAffine.txt && $ASHS_SKIP_REGN ]]; then
     echo "SKIPPING ANTS"
 else
   ANTS 3 -m MSQ[$TEMPLATE,$WTHK/target.nii.gz,1] -o $WTHK/roi_ants.nii.gz \

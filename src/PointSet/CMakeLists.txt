@@ -38,15 +38,12 @@ INCLUDE_DIRECTORIES(${POINTSET_SOURCE_DIR})
 
 ADD_EXECUTABLE(ml_affine MultiLabelAffine.cxx)
 
-SET(VTK_LIBRARIES
-  vtkIO vtkHybrid vtkRendering vtkImaging vtkGraphics vtkFiltering vtkCommon)
+#SET(VTK_LIBRARIES
+#  vtkIO vtkHybrid vtkRendering vtkImaging vtkGraphics vtkFiltering vtkCommon)
 
 
 SET(COMMON_LIBS
-  ITKCommon
-  ITKBasicFilters
-  ITKIO
-  ITKNumerics
+  ${ITK_LIBRARIES}
   ${VTK_LIBRARIES}
 )
 
