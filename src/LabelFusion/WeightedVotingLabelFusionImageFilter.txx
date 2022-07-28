@@ -267,8 +267,7 @@ WeightedVotingLabelFusionImageFilter<TInputImage, TOutputImage>
     apd[i] = new InputImagePixelType[nPatch];
 
   // Also an array of pointers to the segmentations of different atlases
-  const InputImagePixelType **patchSeg = new const InputImagePixelType*[n]; 
->>>>>>> 515ff7c2f50928adabc4e64bded9a7e76fc750b1
+  const InputImagePixelType **patchSeg = new const InputImagePixelType*[n];
 
   // Create a counter map -- needed if we have weights or posteriors - so always
   m_CounterMap = PosteriorImage::New();
