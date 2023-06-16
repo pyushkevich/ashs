@@ -154,8 +154,6 @@ else
              # test width values
              opacity=`expr "$1" : '\([.0-9]*\)'`
              [ "$opacity" = "" ] && errMsg "OPACITY=$opacity IS NOT A NON-NEGATIVE FLOATING POINT NUMBER"
-             opacitytest=`echo "$opacity > 1" | bc`
-             [ $opacitytest -eq 1 ] && errMsg "OPACITY=$opacity MUST BE BETWEEN 0.0 AND 1.0"
              ;;
          -)    # STDIN and end of arguments
              break

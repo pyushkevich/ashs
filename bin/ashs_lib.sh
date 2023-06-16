@@ -926,34 +926,44 @@ BLOCK1
 
   # Run the label fusion program
 	local RESULT=$TDIR/fusion/lfseg_raw_${side}.nii.gz
-  # note: the raw posteriors command here is for compatibility with old atlases
-  # in which posteriors are not normalized to [0 1] range
-  label_fusion 3 -g $ATLASES -l $ATLSEGS \
-    -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
-    -pd $ASHS_MALF_PADDING \
-    -p $TDIR/fusion/posterior_${side}_%03d.nii.gz -raw-posteriors \
-    tse_native_chunk_${side}.nii.gz $RESULT
+  if [[ -f $RESULT && $ASHS_SKIP_REGN ]]; then
+    echo "Skipping label fusion"
+  else
+    # note: the raw posteriors command here is for compatibility with old atlases
+    # in which posteriors are not normalized to [0 1] range
+    label_fusion 3 -g $ATLASES -l $ATLSEGS \
+      -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+      -pd $ASHS_MALF_PADDING \
+      -p $TDIR/fusion/posterior_${side}_%03d.nii.gz -raw-posteriors \
+      tse_native_chunk_${side}.nii.gz $RESULT
+  fi
 
   # If there are heuristics, make sure they are supplied to the LF program
   if [[ $ASHS_HEURISTICS ]]; then
 
-		# Apply the heuristics to generate exclusion maps
+    RESULT_HEUR=$TDIR/fusion/lfseg_heur_${side}.nii.gz
+
+    # Apply the heuristics to generate exclusion maps
     mkdir -p $TDIR/heurex
     subfield_slice_rules $RESULT $ASHS_HEURISTICS $TDIR/heurex/heurex_${side}_%04d.nii.gz
 
-		# Rerun label fusion
+    # Rerun label fusion
     local EXCLCMD=$(for fn in $(ls $TDIR/heurex/heurex_${side}_*.nii.gz); do \
       echo "-x $(echo $fn | sed -e "s/.*_//g" | awk '{print 1*$1}') $fn"; \
       done)
 
-    # note: the raw posteriors command here is for compatibility with old atlases
-    # in which posteriors are not normalized to [0 1] range
-		label_fusion 3 -g $ATLASES -l $ATLSEGS \
-			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
-      -pd $ASHS_MALF_PADDING \
-			$EXCLCMD \
-      -p $TDIR/fusion/posterior_${side}_%03d.nii.gz -raw-posteriors \
-			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
+    if [[ -f $RESULT_HEUR && $ASHS_SKIP_REGN ]]; then
+      echo "Skipping label fusion with heuristics"
+    else
+      # note: the raw posteriors command here is for compatibility with old atlases
+      # in which posteriors are not normalized to [0 1] range
+      label_fusion 3 -g $ATLASES -l $ATLSEGS \
+        -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+        -pd $ASHS_MALF_PADDING \
+        $EXCLCMD \
+        -p $TDIR/fusion/posterior_${side}_%03d.nii.gz -raw-posteriors \
+        tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_heur_${side}.nii.gz
+    fi
 
 	else
 		# Just make a copy
@@ -964,14 +974,20 @@ BLOCK1
   # we output posterior probabilities for each label. 
   for kind in usegray nogray; do
 
-    # The part of the command that's different for the usegray and nogray modes
-    if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD=""; fi
+    RESULT_CORR=$TDIR/fusion/lfseg_corr_${kind}_${side}.nii.gz
+    if [[ -f $RESULT_CORR && $ASHS_SKIP_REGN ]]; then
+      echo "Skipping bias correction $kind"
+    else
 
-    sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
-      $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
-      $TDIR/fusion/lfseg_corr_${kind}_${side}.nii.gz $EXCLCMD \
-      $GRAYCMD -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
-      -op $TDIR/fusion/posterior_corr_${kind}_${side}_%03d.nii.gz
+      # The part of the command that's different for the usegray and nogray modes
+      if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD=""; fi
+
+      sa $TDIR/fusion/lfseg_heur_${side}.nii.gz \
+        $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
+        $RESULT_CORR $EXCLCMD \
+        $GRAYCMD -p $TDIR/fusion/posterior_${side}_%03d.nii.gz \
+        -op $TDIR/fusion/posterior_corr_${kind}_${side}_%03d.nii.gz
+    fi
 
   done
   
@@ -986,24 +1002,35 @@ BLOCK1
 
     # note: the raw posteriors command here is for compatibility with old atlases
     # in which posteriors are not normalized to [0 1] range
-		label_fusion 3 -g $ATLASES -l $ATLSEGS \
-			-m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
-      -pd $ASHS_MALF_PADDING \
-			$EXCLCMD \
-      -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz -raw-posteriors \
-			tse_native_chunk_${side}.nii.gz $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz
+    RESULT_REF=$TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz
+    if [[ -f $RESULT_REF && $ASHS_SKIP_REGN ]]; then
+      echo "Skipping label fusion with reference rules"
+    else
+      label_fusion 3 -g $ATLASES -l $ATLSEGS \
+        -m $ASHS_MALF_STRATEGY -rp $ASHS_MALF_PATCHRAD -rs $ASHS_MALF_SEARCHRAD \
+        -pd $ASHS_MALF_PADDING \
+        $EXCLCMD \
+        -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz -raw-posteriors \
+        tse_native_chunk_${side}.nii.gz $RESULT_REF
+    fi
 
     # Rerun AdaBoost
     for kind in usegray nogray; do
 
-      # The part of the command that's different for the usegray and nogray modes
-      if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD=""; fi
+      RESULT_REF_CORR=$TDIR/fusion/lfseg_vsref_corr_${kind}_${side}.nii.gz
 
-      sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
-        $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
-        $TDIR/fusion/lfseg_vsref_corr_${kind}_${side}.nii.gz $EXCLCMD \
-        $GRAYCMD -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz \
-        -op $TDIR/fusion/posterior_corr_${kind}_vsref_${side}_%03d.nii.gz
+      if [[ -f $RESULT_REF_CORR && $ASHS_SKIP_REGN ]]; then
+        echo "Skipping correction $kind with reference rules"
+      else
+        # The part of the command that's different for the usegray and nogray modes
+        if [[ $kind = 'usegray' ]]; then GRAYCMD="-g tse_native_chunk_${side}.nii.gz"; else GRAYCMD=""; fi
+
+        sa $TDIR/fusion/lfseg_vsref_heur_${side}.nii.gz \
+          $ASHS_ATLAS/adaboost/${side}/adaboost_${kind} \
+          $RESULT_REF_CORR $EXCLCMD \
+          $GRAYCMD -p $TDIR/fusion/posterior_vsref_${side}_%03d.nii.gz \
+          -op $TDIR/fusion/posterior_corr_${kind}_vsref_${side}_%03d.nii.gz
+      fi
 
     done
 
