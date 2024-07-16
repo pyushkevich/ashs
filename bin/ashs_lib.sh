@@ -59,12 +59,10 @@ if [[ $ASHS_USE_QSUB || $ASHS_USE_LSF ]]; then
   echo "ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=${ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS}"
 fi
 
-# Handle TMPDIR variable set it to a temporary directory if not specified
-if [[ $TMPDIR == "" ]]; then
-  TMPDIR=$(mktemp -d /tmp/foo.XXXXXXXXXXX)
-  mkdir -p $TMPDIR
-  echo "Temporary directory: $TMPDIR"
-fi
+# Use our own variable for temporary storage instead of defaulting to TMPDIR
+ASHS_TMPDIR=$(mktemp -d -u -t ashs.XXXXXXXX)
+mkdir -p $ASHS_TMPDIR
+echo "ASHS temporary directory: $ASHS_TMPDIR"
 
 # Determine the TMDDIR parameter for the child scripts
 function get_tmpdir()
@@ -561,7 +559,7 @@ function ashs_align_t1t2()
     # Make the ASHS_TSE image isotropic and extract a chunk
     c3d $SUBJ_TSE -resample ${ASHS_TSE_ISO_FACTOR?} \
       -region ${ASHS_TSE_ISO_REGION_CROP?} \
-			-type short -o $TMPDIR/tse_iso.nii.gz
+			-type short -o $ASHS_TMPDIR/tse_iso.nii.gz
 
     # If there is a user-supplied matrix the use it
     if [[ $OVERRIDE_MAT && $OVERRIDE_MODE -eq 1 ]]; then
@@ -581,7 +579,7 @@ function ashs_align_t1t2()
 
       # Use greedy affine mode to perform registration 
       greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m MI -n 100x100x10 \
-        -i $TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
+        -i $ASHS_TMPDIR/tse_iso.nii.gz $SUBJ_MPRAGE \
         ${INIT_RIGID} \
         -o $SUBJ_AFF_T2T1_MAT 
 
@@ -748,13 +746,13 @@ function ashs_reslice_to_template()
 
       # Create a native-space chunk of the ASHS_TSE image
       greedy -d 3 -rf $SUBJ_TSE \
-        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
+        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $ASHS_TMPDIR/natmask.nii.gz \
         -r $SUBJ_T2TEMP_INVTRAN
 
       # Notice that we pad a little in the z-direction. This is to make sure that
       # we get all the slices in the image, otherwise there will be problems with
       # the voting code.
-      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
+      c3d $ASHS_TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
         $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
 
       # Perform additional alignment between the two modalities for each side
@@ -771,12 +769,12 @@ function ashs_reslice_to_template()
         if [[ $ASHS_CHUNK_AFFINE == 1 ]]; then
           greedy -d 3 $ASHS_GREEDY_THREADS \
             -rf $SUBJ_SIDE_TSE_NATCHUNK \
-            -rm $SUBJ_MPRAGE $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
+            -rm $SUBJ_MPRAGE $ASHS_TMPDIR/mprage_to_tse_init_${side}.nii.gz \
             -r $SUBJ_AFF_T2T1_MAT
           greedy -d 3 $ASHS_GREEDY_THREADS \
             -a -dof 12 -m MI -n 20 \
             -i $SUBJ_SIDE_TSE_NATCHUNK \
-               $TMPDIR/mprage_to_tse_init_${side}.nii.gz \
+               $ASHS_TMPDIR/mprage_to_tse_init_${side}.nii.gz \
             -o $SUBJ_SIDE_AFF_T2T1_MAT
           c3d_affine_tool $SUBJ_SIDE_AFF_T2T1_MAT -inv \
              -o $SUBJ_SIDE_AFF_T2T1_INVMAT
@@ -806,13 +804,13 @@ function ashs_reslice_to_template()
       # refine a custom mask for the ASHS_TSE image
       greedy -d 3 $ASHS_GREEDY_THREADS \
         -rf $SUBJ_TSE \
-        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $TMPDIR/natmask.nii.gz \
+        -rm $SUBJ_SIDE_TSE_TO_CHUNKTEMP_REGMASK $ASHS_TMPDIR/natmask.nii.gz \
         -r $SUBJ_SIDE_T2TEMP_INVTRAN 
 
       # Notice that we pad a little in the z-direction. This is to make sure that
       # we get all the slices in the image, otherwise there will be problems with
       # the voting code.
-      c3d $TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
+      c3d $ASHS_TMPDIR/natmask.nii.gz -thresh 0.5 inf 1 0 -trim 0x0x2vox \
         $SUBJ_TSE -reslice-identity -type short -o $SUBJ_SIDE_TSE_NATCHUNK
 
       # Resample MPRAGE to TSE space of each side
@@ -1061,39 +1059,39 @@ function ashs_average_images_normalized()
   shift 2
 
   # Break images into batches of 5 for averaging
-  printf "%s %s %s %s %s\n" $@ > $TMPDIR/avglist.txt
+  printf "%s %s %s %s %s\n" $@ > $ASHS_TMPDIR/avglist.txt
 
   # Number of batches
   local N=$#
-  local NBATCH=$(cat $TMPDIR/avglist.txt | wc -l)
+  local NBATCH=$(cat $ASHS_TMPDIR/avglist.txt | wc -l)
 
   # Perform average for each line
   for ((i=1;i<=$NBATCH;i++)); do
 
-    local BATCHINPUT=$(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1)
+    local BATCHINPUT=$(cat $ASHS_TMPDIR/avglist.txt | head -n $i | tail -n 1)
     local BATCHSIZE=$(echo $BATCHINPUT | wc -w)
 
     # Avoid batches of 1 image
     if [[ $BATCHSIZE -gt 1 ]]; then
       c3d $REFIMG -popas R \
-        $(cat $TMPDIR/avglist.txt | head -n $i | tail -n 1) \
+        $(cat $ASHS_TMPDIR/avglist.txt | head -n $i | tail -n 1) \
         -foreach -stretch 0% 99% 0 1000 -insert R 1 -reslice-identity -endfor \
         -accum -add -endaccum \
-        -o $TMPDIR/avg_batch_$i.nii.gz
+        -o $ASHS_TMPDIR/avg_batch_$i.nii.gz
     else
-      cp $BATCHINPUT $TMPDIR/avg_batch_$i.nii.gz
+      cp $BATCHINPUT $ASHS_TMPDIR/avg_batch_$i.nii.gz
     fi
 
   done
 
   # Add the batch averages up
-  c3d $(for ((i=1;i<=$NBATCH;i++)); do echo $TMPDIR/avg_batch_$i.nii.gz; done) \
+  c3d $(for ((i=1;i<=$NBATCH;i++)); do echo $ASHS_TMPDIR/avg_batch_$i.nii.gz; done) \
     -accum -add -endaccum \
     -scale $(echo $N | awk '{print 1.0 / $1}') \
     -sharpen -o $OUT
 
   # Remove intermediates
-  rm -rf $TMPDIR/avglist.txt $TMPDIR/avg_batch_*.nii.gz
+  rm -rf $ASHS_TMPDIR/avglist.txt $ASHS_TMPDIR/avg_batch_*.nii.gz
 }
 
 function ashs_template_single_reg()
@@ -1224,10 +1222,10 @@ function ashs_template_pairwise_rigid()
       # Perform greedy registration
       greedy -d 3 $ASHS_GREEDY_THREADS -a -dof 6 -m NCC 2x2x2 \
         -i $FIX_IMG $MOV_IMG \
-        -o $RMAT -ia-image-centers -n 40 | tee $TMPDIR/reg.txt
+        -o $RMAT -ia-image-centers -n 40 | tee $ASHS_TMPDIR/reg.txt
 
       # Get the final cost
-      cat $TMPDIR/reg.txt | grep -B 3 'Final RAS' | \
+      cat $ASHS_TMPDIR/reg.txt | grep -B 3 'Final RAS' | \
         grep -v "[A-Z]" | tail -n 1 | awk '{print $3}' > $COST
 
     fi
@@ -2393,11 +2391,11 @@ function ashs_registration_qc()
     -type uchar \
     -int 0 $TEMPSEG -swapdim RSA -trim 40x40x0mm -resample-iso min -as SS \
     -int 1 $TEMP -stretch 0 99.5% 0 255 -clip 0 255 \
-    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/cor_temp_%02d.png -clear \
+    -reslice-identity -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/cor_temp_%02d.png -clear \
     -push SS $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
-    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/cor_mprage_%02d.png -clear \
+    -reslice-identity -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/cor_mprage_%02d.png -clear \
     -push SS $SUBJ_SIDE_TSE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
-    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/cor_tse_%02d.png
+    -reslice-identity -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/cor_tse_%02d.png
 
   # Generate sagittal slices
   SLICESPEC="33%:33%:84%"
@@ -2405,14 +2403,14 @@ function ashs_registration_qc()
     -type uchar \
     -int 0 $TEMPSEG -swapdim ASR -trim 40x40x0mm -resample-iso min -as SS \
     -int 1 $TEMP -stretch 0 99.5% 0 255 -clip 0 255 \
-    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/sag_temp_%02d.png -clear \
+    -reslice-identity -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/sag_temp_%02d.png -clear \
     -push SS $SUBJ_SIDE_MPRAGE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
-    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/sag_mprage_%02d.png -clear \
+    -reslice-identity -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/sag_mprage_%02d.png -clear \
     -push SS $SUBJ_SIDE_TSE_TO_CHUNKTEMP -stretch 0 99.5% 0 255 -clip 0 255 \
-    -reslice-identity -slice z ${SLICESPEC} -oo $TMPDIR/sag_tse_%02d.png
+    -reslice-identity -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/sag_tse_%02d.png
 
   # Grid all of the pngs
-  for MYPNG in $(ls $TMPDIR/cor_*.png $TMPDIR/sag_*.png); do
+  for MYPNG in $(ls $ASHS_TMPDIR/cor_*.png $ASHS_TMPDIR/sag_*.png); do
     $ASHS_ROOT/bin/ashs_grid.sh -o 0.25 -s 25 -c white $MYPNG $MYPNG
     convert $MYPNG -bordercolor Black -border 1x1 $MYPNG
   done
@@ -2425,18 +2423,18 @@ function ashs_registration_qc()
   fi
   montage $MONTFONTCMD \
     -tile 7x -geometry +5+5 -mode Concatenate \
-    $TMPDIR/*_temp_*.png  \
-    $TMPDIR/*_mprage_*.png  \
-    $TMPDIR/*_tse_*.png \
-    $TMPDIR/qa.png
+    $ASHS_TMPDIR/*_temp_*.png  \
+    $ASHS_TMPDIR/*_mprage_*.png  \
+    $ASHS_TMPDIR/*_tse_*.png \
+    $ASHS_TMPDIR/qa.png
 
-  convert  $TMPDIR/qa.png \
+  convert  $ASHS_TMPDIR/qa.png \
     -bordercolor Black -border 1x1  \
-    $TMPDIR/qa.png
+    $ASHS_TMPDIR/qa.png
 
   mkdir -p $ASHS_WORK/qa
   montage $MONTFONTCMD \
-    -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
+    -label "${ASHS_SUBJID}:${side}" $ASHS_TMPDIR/qa.png -geometry +1+1 \
     $ASHS_WORK/qa/qa_registration_${side}_qa.png
 
   # Call hook script with the result as an attachment
@@ -2472,11 +2470,11 @@ function ashs_segmentation_qc()
     -type uchar -int 0 \
     $SEG -swapdim RSA -trim 40x40x0mm -resample-iso min -as SS \
     -int 1 $REFSPACE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity -as T2R \
-    -slice z ${SLICESPEC} -oo $TMPDIR/cor_tse_%02d.png -clear \
+    -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/cor_tse_%02d.png -clear \
     -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-matrix $SUBJ_AFF_T2T1_MAT \
-    -slice z ${SLICESPEC} -oo $TMPDIR/cor_mprage_%02d.png -clear \
+    -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/cor_mprage_%02d.png -clear \
     -push T2R -push SS -oli $LABELFILE 0.5 \
-    -slice-all z ${SLICESPEC} -oomc 3 $TMPDIR/cor_seg_%02d.png 
+    -slice-all z ${SLICESPEC} -oomc 3 $ASHS_TMPDIR/cor_seg_%02d.png 
 
   # Generate sagittal slices
   SLICESPEC="33%:33%:84%"
@@ -2484,14 +2482,14 @@ function ashs_segmentation_qc()
     -type uchar -int 0 \
     $SEG -swapdim ASR -trim 40x40x0mm -resample-iso min -as SS \
     -int 1 $REFSPACE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-identity -as T2R \
-    -slice z ${SLICESPEC} -oo $TMPDIR/sag_tse_%02d.png -clear \
+    -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/sag_tse_%02d.png -clear \
     -push SS $SUBJ_MPRAGE -stretch 0 99.5% 0 255 -clip 0 255 -reslice-matrix $SUBJ_AFF_T2T1_MAT \
-    -slice z ${SLICESPEC} -oo $TMPDIR/sag_mprage_%02d.png -clear \
+    -slice z ${SLICESPEC} -oo $ASHS_TMPDIR/sag_mprage_%02d.png -clear \
     -push T2R -push SS -oli $LABELFILE 0.5 \
-    -slice-all z ${SLICESPEC} -oomc 3 $TMPDIR/sag_seg_%02d.png 
+    -slice-all z ${SLICESPEC} -oomc 3 $ASHS_TMPDIR/sag_seg_%02d.png 
 
   # Grid all of the pngs
-  for MYPNG in $(ls $TMPDIR/cor_*.png $TMPDIR/sag_*.png); do
+  for MYPNG in $(ls $ASHS_TMPDIR/cor_*.png $ASHS_TMPDIR/sag_*.png); do
     $ASHS_ROOT/bin/ashs_grid.sh -o 0.25 -s 25 -c white $MYPNG $MYPNG
     convert $MYPNG -bordercolor Black -border 1x1 $MYPNG
   done
@@ -2504,18 +2502,18 @@ function ashs_segmentation_qc()
   fi
   montage $MONTFONTCMD \
     -tile 7x -geometry +5+5 -mode Concatenate \
-    $TMPDIR/*_tse_*.png  \
-    $TMPDIR/*_mprage_*.png  \
-    $TMPDIR/*_seg_*.png \
-    $TMPDIR/qa.png
+    $ASHS_TMPDIR/*_tse_*.png  \
+    $ASHS_TMPDIR/*_mprage_*.png  \
+    $ASHS_TMPDIR/*_seg_*.png \
+    $ASHS_TMPDIR/qa.png
 
-  convert  $TMPDIR/qa.png \
+  convert  $ASHS_TMPDIR/qa.png \
     -bordercolor Black -border 1x1  \
-    $TMPDIR/qa.png
+    $ASHS_TMPDIR/qa.png
 
   mkdir -p $ASHS_WORK/qa
   montage $MONTFONTCMD \
-    -label "${ASHS_SUBJID}:${side}" $TMPDIR/qa.png -geometry +1+1 \
+    -label "${ASHS_SUBJID}:${side}" $ASHS_TMPDIR/qa.png -geometry +1+1 \
     $ASHS_WORK/qa/qa_seg_${malfmode}_${corrmode}_${side}_qa.png
 
 

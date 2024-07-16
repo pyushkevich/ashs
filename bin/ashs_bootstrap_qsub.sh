@@ -77,26 +77,26 @@ if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
     -o $WREG/sqrt_fwd.mat -inv -o $WREG/sqrt_inv.mat 
 
   # Convert segmentation into a mesh
-  c3d $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 -o $TMPDIR/mybin.nii.gz
-  vtklevelset $TMPDIR/mybin.nii.gz $TMPDIR/mymesh.vtk 0.5
+  c3d $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 -o $ASHS_TMPDIR/mybin.nii.gz
+  vtklevelset $ASHS_TMPDIR/mybin.nii.gz $ASHS_TMPDIR/mymesh.vtk 0.5
 
   # Transform one of the meshes forward
-  warpmesh $TMPDIR/mymesh.vtk $TMPDIR/mymeshhw.vtk $WREG/sqrt_fwd.mat
+  warpmesh $ASHS_TMPDIR/mymesh.vtk $ASHS_TMPDIR/mymeshhw.vtk $WREG/sqrt_fwd.mat
 
   # Generate reference space
   RES=$(echo $ASHS_TEMPLATE_TARGET_RESOLUTION | sed -e "s/x/ /g" -e "s/mm//g")
 
   # TODO: this is a big margin - to do with greedy limitations!
-  mesh2img -vtk $TMPDIR/mymeshhw.vtk -f -a $RES 5 $WREG/refspace.nii.gz
+  mesh2img -vtk $ASHS_TMPDIR/mymeshhw.vtk -f -a $RES 5 $WREG/refspace.nii.gz
 
   # Warp both images into reference space
-  c3d $WREG/refspace.nii.gz $ATLAS_TSE -reslice-matrix $WREG/sqrt_fwd.mat -o $TMPDIR/moving_hw.nii.gz
-  c3d $WREG/refspace.nii.gz $SUBJ_TSE -reslice-matrix $WREG/sqrt_inv.mat -o $TMPDIR/fixed_hw.nii.gz
+  c3d $WREG/refspace.nii.gz $ATLAS_TSE -reslice-matrix $WREG/sqrt_fwd.mat -o $ASHS_TMPDIR/moving_hw.nii.gz
+  c3d $WREG/refspace.nii.gz $SUBJ_TSE -reslice-matrix $WREG/sqrt_inv.mat -o $ASHS_TMPDIR/fixed_hw.nii.gz
 
   # Create mask in reference space
   c3d $WREG/refspace.nii.gz  $FDIR/lfseg_heur_${side}.nii.gz -thresh 1 inf 1 0 \
     -int 0 -reslice-matrix $WREG/sqrt_inv.mat -thresh 0.5 inf 1 0 -dilate 1 10x10x2vox \
-    -o $TMPDIR/mask.nii.gz
+    -o $ASHS_TMPDIR/mask.nii.gz
 
   # Bootstrap transform file
   BOOT_WARP=$WREG/greedy_warp.nii.gz
@@ -111,9 +111,9 @@ if [[ $ASHS_NO_BOOTSTRAP -ne 1 ]]; then
   else
     # TODO: use the right parameters!
     time greedy -d 3 $ASHS_GREEDY_THREADS \
-      -gm $TMPDIR/mask.nii.gz \
+      -gm $ASHS_TMPDIR/mask.nii.gz \
       -m NCC 2x2x2 \
-      -i $TMPDIR/fixed_hw.nii.gz $TMPDIR/moving_hw.nii.gz \
+      -i $ASHS_TMPDIR/fixed_hw.nii.gz $ASHS_TMPDIR/moving_hw.nii.gz \
       -o $BOOT_WARP \
       -e 0.5 -n 60x60x20
   fi

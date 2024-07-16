@@ -60,10 +60,10 @@ mkdir -p $WSTAT
 # in the label name with underlines
 cat $ASHS_ATLAS/snap/snaplabels.txt | \
   awk '$1 > 0 {split($0,arr,"\""); sub(/[ \t]+/,"_",arr[2]); print $1,arr[2]}' \
-  > $TMPDIR/labels.txt
+  > $ASHS_TMPDIR/labels.txt
 
-LABIDS=($(cat $TMPDIR/labels.txt | awk '{print $1}'))
-LABNAMES=($(cat $TMPDIR/labels.txt | awk '{print $2}'))
+LABIDS=($(cat $ASHS_TMPDIR/labels.txt | awk '{print $1}'))
+LABNAMES=($(cat $ASHS_TMPDIR/labels.txt | awk '{print $2}'))
 
 # Names of segmentations
 for segtype in raw heur corr_usegray corr_nogray manual; do
@@ -82,7 +82,7 @@ for segtype in raw heur corr_usegray corr_nogray manual; do
       if [[ -f $SBC ]]; then
 
         # Generate the voxel and extent statistics
-        STATS=$TMPDIR/rawvols_${segtype}_${side}.txt
+        STATS=$ASHS_TMPDIR/rawvols_${segtype}_${side}.txt
         c3d $SBC -dup -lstat | tee $STATS
 
         # Create an output file
@@ -114,7 +114,7 @@ for segtype in raw heur corr_usegray corr_nogray manual; do
         if [[ -f $REFSEG && $segtype != "manual" ]]; then
 
           # Get the overlap statistics
-          OVLFILE=$TMPDIR/ovl_${segtype}_${side}.txt
+          OVLFILE=$ASHS_TMPDIR/ovl_${segtype}_${side}.txt
           c3d $REFSEG -int 0 -dup $SBC -reslice-identity -label-overlap > $OVLFILE
 
           # Extract the statistics for each label
@@ -149,16 +149,16 @@ if [[ -f $ASHS_ATLAS/template/template_bet_mask.nii.gz ]]; then
 
   # Warp the BET mask
   greedy -d 3 $ASHS_GREEDY_THREADS \
-    -rm $ASHS_ATLAS/template/template_bet_mask.nii.gz $TMPDIR/icv.nii.gz \
+    -rm $ASHS_ATLAS/template/template_bet_mask.nii.gz $ASHS_TMPDIR/icv.nii.gz \
     -rf $ASHS_WORK/mprage.nii.gz \
     -r $ASHS_WORK/affine_t1_to_template/t1_to_template_affine_inv.mat \
        $ASHS_WORK/ants_t1_to_temp/greedy_t1_to_template_invwarp.nii.gz
 
   # Get T1 voxel volume
-  VVOX=$(voxel_size $TMPDIR/icv.nii.gz)
+  VVOX=$(voxel_size $ASHS_TMPDIR/icv.nii.gz)
 
   # Get ICV
-  VOLUME=$(c3d $TMPDIR/icv.nii.gz -thresh 0.5 inf 1 0 -dup -lstat | tail -n 1 | awk '{print $6}')
+  VOLUME=$(c3d $ASHS_TMPDIR/icv.nii.gz -thresh 0.5 inf 1 0 -dup -lstat | tail -n 1 | awk '{print $6}')
   ICV=$(echo "$VVOX $VOLUME" | awk '{print $1*$2}')
 
   # Write the volume information to output file
