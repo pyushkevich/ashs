@@ -166,7 +166,9 @@ function qsubmit_sync()
     bsub -K -o /dev/null -w "ended(${MYNAME})" /bin/sleep 1
     /bin/sleep 0.5
   elif [[ $ASHS_USE_SLURM ]]; then
-    sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -W -D . $*
+    JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -W -D . $* \
+		| awk '{print $4}')
+    qwait $JOB_ID
   else
     fake_qsub $MYNAME $*
   fi
@@ -199,7 +201,7 @@ function qsubmit_single_array()
   elif [[ $ASHS_USE_SLURM ]]; then
 
     # Launch separate jobs
-    local DEPSTRING="afterany"
+    local DEPSTRING=""
     for p1 in $PARAM; do
 
       JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 \
@@ -216,7 +218,7 @@ function qsubmit_single_array()
   elif [[ $ASHS_USE_SLURM ]]; then
 
     # Launch separate jobs
-    local DEPSTRING="afterany"
+    local DEPSTRING=""
     for p1 in $PARAM; do
       
       JOB_ID=$(sbatch $QOPTS -o $ASHS_WORK/dump/${UNIQ_NAME}_%j.out -D . $* $p1 \
@@ -257,6 +259,7 @@ function qsubmit_single_array()
     qwait "${UNIQ_NAME}_*"
 
   fi
+  echo $DEPSTRING
 }
 
 
@@ -289,7 +292,7 @@ function qsubmit_double_array()
   elif [[ $ASHS_USE_SLURM ]]; then
 
     # Launch separate jobs
-    local DEPSTRING="afterany"
+    local DEPSTRING=""
     for p1 in $PARAM1; do
       for p2 in $PARAM2; do
 
@@ -307,7 +310,7 @@ function qsubmit_double_array()
   elif [[ $ASHS_USE_SLURM ]]; then
 
     # Launch separate jobs
-    local DEPSTRING="afterany"
+    local DEPSTRING=""
     for p1 in $PARAM1; do
       for p2 in $PARAM2; do
       
@@ -360,7 +363,44 @@ function qwait()
   if [[ $ASHS_USE_QSUB ]]; then
     qsub -b y -sync y -j y -o /dev/null -cwd -hold_jid "$1" /bin/sleep 1
   elif [[ $ASHS_USE_SLURM ]]; then
-    srun -d $1 $QOPTS /bin/sleep 1
+    # check if all jobs have completed
+    JOBS=$1
+    IFS=':' read -ra RAW_ARRAY <<< "$JOBS"
+    JOB_ARRAY=()
+    for JOBID in "${RAW_ARRAY[@]}"; do
+        [[ -n "$JOBID" ]] && JOB_ARRAY+=("$JOBID")
+    done
+    while true; do
+        all_completed=true
+        for JOBID in "${JOB_ARRAY[@]}"; do
+            STATE=$(sacct -j "$JOBID" --format=State --noheader | awk '{print $1}' | head -n 1)
+
+            if [[ -z "$STATE" ]]; then
+                echo -e "\tWarning: Job $JOBID not found in sacct yet."
+                all_completed=false
+            elif [[ "$STATE" != "COMPLETED" ]]; then
+                if [[ "$STATE" == "PENDING" || "$STATE" == "RUNNING" ]]; then
+                    echo -e "\tJob $JOBID is still $STATE."
+                    all_completed=false
+                else
+                    echo -e "\tError: Job $JOBID finished with state '$STATE', not COMPLETED."
+                    exit 1
+                fi
+            else
+                echo -e "\tJob $JOBID completed successfully."
+            fi
+            sleep 5
+        done
+
+        if $all_completed; then
+            echo -e "\tAll jobs completed successfully. Continuing..."
+            break
+        fi
+        
+        wait_time=180
+        echo "Waiting $wait_time seconds before checking again..."
+        sleep $wait_time
+  done
   elif [[ $ASHS_USE_LSF ]]; then
     bsub -K -o /dev/null -w "ended($1)" /bin/sleep 1
   fi
