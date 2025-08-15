@@ -373,36 +373,35 @@ function qwait()
     done
     while true; do
         all_completed=true
-        echo $JOB_ARRAY
         for JOBID in "${JOB_ARRAY[@]}"; do
-            echo "Checking status of job $JOBID"
             STATE=$(sacct -j "$JOBID" --format=State --noheader | awk '{print $1}' | head -n 1)
 
             if [[ -z "$STATE" ]]; then
-                echo "Warning: Job $JOBID not found in sacct yet."
+                echo -e "\tWarning: Job $JOBID not found in sacct yet."
                 all_completed=false
             elif [[ "$STATE" != "COMPLETED" ]]; then
                 if [[ "$STATE" == "PENDING" || "$STATE" == "RUNNING" ]]; then
-                    echo "Job $JOBID is still $STATE."
+                    echo -e "\tJob $JOBID is still $STATE."
                     all_completed=false
                 else
-                    echo "Error: Job $JOBID finished with state '$STATE', not COMPLETED."
+                    echo -e "\tError: Job $JOBID finished with state '$STATE', not COMPLETED."
                     exit 1
                 fi
             else
-                echo "Job $JOBID completed successfully."
+                echo -e "\tJob $JOBID completed successfully."
             fi
+            sleep 5
         done
 
         if $all_completed; then
-            echo "All jobs completed successfully. Continuing..."
+            echo -e "\tAll jobs completed successfully. Continuing..."
             break
         fi
         
-        waittime=60
-        echo "Waiting $waittime seconds before checking again..."
-        sleep $waittime
-done
+        wait_time=180
+        echo "Waiting $wait_time seconds before checking again..."
+        sleep $wait_time
+  done
   elif [[ $ASHS_USE_LSF ]]; then
     bsub -K -o /dev/null -w "ended($1)" /bin/sleep 1
   fi
