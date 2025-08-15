@@ -354,7 +354,6 @@ function qsubmit_double_array()
     qwait "${UNIQ_NAME}_*"
 
   fi
-  echo $DEPSTRING
 }
 
 
