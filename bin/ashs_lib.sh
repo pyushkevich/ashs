@@ -2505,7 +2505,7 @@ function ashs_segmentation_qc()
   local LABELFILE=$ASHS_ATLAS/snap/snaplabels.txt
 
   # Generate coronal slices
-  local SLICESPEC="16.6%:16.6%:88%"
+  local SLICESPEC="$ASHS_QC_CORONAL_SLICE_SPEC"
   c3d \
     -type uchar -int 0 \
     $SEG -swapdim RSA -trim 40x40x0mm -resample-iso min -as SS \
@@ -2517,7 +2517,7 @@ function ashs_segmentation_qc()
     -slice-all z ${SLICESPEC} -oomc 3 $ASHS_TMPDIR/cor_seg_%02d.png 
 
   # Generate sagittal slices
-  SLICESPEC="33%:33%:84%"
+  SLICESPEC="$ASHS_QC_SAGITTAL_SLICE_SPEC"
   c3d \
     -type uchar -int 0 \
     $SEG -swapdim ASR -trim 40x40x0mm -resample-iso min -as SS \
@@ -2541,7 +2541,7 @@ function ashs_segmentation_qc()
     MONTFONTCMD=" -font $montage_font "
   fi
   montage $MONTFONTCMD \
-    -tile 7x -geometry +5+5 -mode Concatenate \
+    -tile x3 -geometry +5+5 -mode Concatenate \
     $ASHS_TMPDIR/*_tse_*.png  \
     $ASHS_TMPDIR/*_mprage_*.png  \
     $ASHS_TMPDIR/*_seg_*.png \

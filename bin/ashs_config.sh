@@ -229,3 +229,12 @@ ASHS_EC_MINIMUM_SAMPLES=100
 # single qsub job. These qsub options can be used to run jobs in a parallel environment
 # An example value of this option might be "-pe mpi 2"
 ASHS_EC_QSUB_EXTRA_OPTIONS=
+
+# -----------------------------------------------
+# QC parameters
+# -----------------------------------------------
+
+# Where slices are sampled in the coronal and sagittal planes for QC. The specification
+# corresponds to the c3d -slice command (start:step:end).
+ASHS_QC_CORONAL_SLICE_SPEC="16.6%:16.6%:88%"
+ASHS_QC_SAGITTAL_SLICE_SPEC="33%:33%:84%"
