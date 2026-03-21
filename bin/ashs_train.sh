@@ -175,7 +175,7 @@ while getopts "C:D:L:w:s:x:q:r:z:m:t:S:NdhVQPlu" opt; do
     Q) ASHS_USE_QSUB=1;;
     P) ASHS_USE_PARALLEL=1;;
     l) ASHS_USE_LSF=1;;
-    l) ASHS_USE_SLURM=1;;
+    u) ASHS_USE_SLURM=1;;
     q) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_OPTS=$OPTARG;;
     t) ASHS_GREEDY_THREADS=" -threads $OPTARG ";;
     z) ASHS_USE_SOME_BATCHENV=1; ASHS_QSUB_HOOK=$OPTARG;;
